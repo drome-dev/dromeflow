@@ -1,5 +1,5 @@
 import React from 'react';
-import { Icon } from '../../../ui/Icon';
+import { Icon } from '../../ui/Icon';
 
 interface ProfessionalMetricsModalProps {
    isOpen: boolean;

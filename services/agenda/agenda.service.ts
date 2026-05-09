@@ -1,10 +1,23 @@
 import { supabase } from '../supabaseClient';
-import type { AgendaSettings, AgendaDisponibilidade } from '../../types';
+import type { AgendaAuthResult, AgendaSettings, AgendaDisponibilidade, AgendaAtendimento } from '../../types';
+import { AGENDA_BLOCKING_STATUSES, AGENDA_PERIODS, DEFAULT_AGENDA_PERIODS, PUBLIC_AGENDA_DEFAULT_PERIODS } from '../../constants/agenda';
+import { createLogger } from '../utils/log';
+import { AgendaServiceError, toAgendaServiceError } from './agenda.errors';
+import {
+  assertValidAgendaPeriods,
+  assertValidDateRange,
+  assertValidISODate,
+  assertValidPhone,
+  assertValidUnitSlug,
+  assertValidUuid,
+  normalizeBrazilianPhone,
+} from './agenda.validation';
 
-// Mapeamento de períodos — fiel ao app externo
-const PERIODOS_MANHA = ['8 horas', '6 horas', '4 horas manhã'];
-const PERIODOS_TARDE = ['8 horas', '6 horas', '4 horas tarde'];
-const PERIODOS_NAO = ['NÃO DISPONIVEL', 'NÃO DISPONÍVEL', 'NÃO', 'NAO'];
+const logger = createLogger('agenda.service');
+const FREE_AGENDA_STATUSES = ['LIVRE', ...DEFAULT_AGENDA_PERIODS] as const;
+
+const isFreeAgendaStatus = (status: unknown): boolean =>
+  FREE_AGENDA_STATUSES.includes(status as never);
 
 // ============================================================================
 // Configurações da Unidade (Gestão)
@@ -15,6 +28,8 @@ const PERIODOS_NAO = ['NÃO DISPONIVEL', 'NÃO DISPONÍVEL', 'NÃO', 'NAO'];
  * Se não existir, retorna a configuração "default" não salva.
  */
 export const getAgendaSettings = async (unitId: string): Promise<AgendaSettings | null> => {
+  assertValidUuid(unitId, 'Unidade');
+
   const { data, error } = await supabase
     .from('agenda_settings')
     .select('*')
@@ -24,8 +39,8 @@ export const getAgendaSettings = async (unitId: string): Promise<AgendaSettings 
     .maybeSingle();
 
   if (error) {
-    console.error('Erro ao buscar configurações da agenda:', error);
-    throw error;
+    logger.error('Erro ao buscar configurações da agenda', { unitId, error });
+    throw new AgendaServiceError('SUPABASE_ERROR', 'Não foi possível carregar as configurações da agenda.', error);
   }
 
   return data || null;
@@ -38,21 +53,31 @@ export const saveAgendaSettings = async (
   unitId: string,
   settingsData: Partial<AgendaSettings>
 ): Promise<AgendaSettings> => {
+  assertValidUuid(unitId, 'Unidade');
+  if (settingsData.periodos_cadastrados) {
+    assertValidAgendaPeriods(settingsData.periodos_cadastrados);
+  }
+
   // Dados limpos para salvar, pegando apenas o que interessa
   const payload = {
     unit_id: unitId,
     dias_liberados: settingsData.dias_liberados || [],
-    periodos_cadastrados: settingsData.periodos_cadastrados || ['8 horas', '6 horas', '4 horas manhã', '4 horas tarde'],
+    periodos_cadastrados: settingsData.periodos_cadastrados || [...DEFAULT_AGENDA_PERIODS],
     is_link_active: settingsData.is_link_active ?? true,
     updated_at: new Date().toISOString()
   };
 
   // Desativa versões anteriores da mesma unidade (não-sistema) antes de criar a nova
-  await supabase
+  const { error: deactivateError } = await supabase
     .from('agenda_settings')
     .update({ is_link_active: false })
     .eq('unit_id', unitId)
     .eq('is_system', false);
+
+  if (deactivateError) {
+    logger.error('Erro ao desativar versões anteriores da agenda', { unitId, error: deactivateError });
+    throw new AgendaServiceError('SAVE_FAILED', 'Não foi possível atualizar a configuração anterior da agenda.', deactivateError);
+  }
 
   const { data, error } = await supabase
     .from('agenda_settings')
@@ -61,8 +86,8 @@ export const saveAgendaSettings = async (
     .single();
 
   if (error) {
-    console.error('Erro ao salvar agenda_settings:', error);
-    throw new Error("Não foi possível salvar as configurações da agenda.");
+    logger.error('Erro ao salvar agenda_settings', { unitId, error });
+    throw new AgendaServiceError('SAVE_FAILED', 'Não foi possível salvar as configurações da agenda.', error);
   }
 
   return data;
@@ -79,19 +104,9 @@ export const saveAgendaSettings = async (
 export const authenticateProfissional = async (
   telefone: string,
   unitSlug: string
-): Promise<{
-  profissional: any;
-  configuracoes: AgendaSettings;
-  unidade: any;
-  jaEnviou: boolean;
-  diasPendentes: string[];
-  disponibilidadeEnviada: { data: string; periodos: string[]; status_manha: string | null; status_tarde: string | null }[];
-} | null> => {
-  // 1. Limpa e normaliza o telefone (Remove 55 se vier com DDI)
-  let whatsLimpo = telefone.replace(/\D/g, '');
-  if (whatsLimpo.startsWith('55') && whatsLimpo.length > 11) {
-    whatsLimpo = whatsLimpo.substring(2);
-  }
+): Promise<AgendaAuthResult | null> => {
+  const whatsLimpo = assertValidPhone(telefone);
+  assertValidUnitSlug(unitSlug);
 
   // 2. Acha a unidade pelo slug (agora unit_code)
   const { data: unitData, error: unitError } = await supabase
@@ -101,7 +116,7 @@ export const authenticateProfissional = async (
     .single();
 
   if (unitError || !unitData) {
-    throw new Error("Unidade não encontrada. Verifique o link.");
+    throw new AgendaServiceError('UNIT_NOT_FOUND', 'Unidade não encontrada. Verifique o link.', unitError);
   }
 
   // 3. Busca profissionais da unidade e filtra localmente pelo telefone para ignorar máscaras (ex: () - ) no banco de dados.
@@ -111,17 +126,14 @@ export const authenticateProfissional = async (
     .eq('unit_id', unitData.id);
 
   if (profsError || !profsData) {
-    throw new Error("Erro ao comunicar com o banco de dados.");
+    throw new AgendaServiceError('SUPABASE_ERROR', 'Erro ao comunicar com o banco de dados.', profsError);
   }
 
   // Filtragem local a prova de falhas: limpa todos os espaços e símbolos tanto do input quanto do banco
   // Filtragem local a prova de falhas: compara apenas os dígitos finais para ignorar máscaras e DDI
   const profData = profsData.find(p => {
     if (!p.whatsapp) return false;
-    const dbPhone = p.whatsapp.replace(/\D/g, ''); // Limpa banco
-
-    // Normaliza banco tirando o 55 se houver
-    const dbPhoneNoDDI = (dbPhone.startsWith('55') && dbPhone.length > 11) ? dbPhone.substring(2) : dbPhone;
+    const dbPhoneNoDDI = normalizeBrazilianPhone(p.whatsapp);
 
     // Comparações:
     // 1. Exato (sem DDI em ambos)
@@ -132,7 +144,7 @@ export const authenticateProfissional = async (
   });
 
   if (!profData) {
-    throw new Error("O seu número de WhatsApp não foi encontrado ou não pertence a esta unidade.");
+    throw new AgendaServiceError('PROFESSIONAL_NOT_FOUND', 'O seu número de WhatsApp não foi encontrado ou não pertence a esta unidade.');
   }
 
   // 4. Acha a configuração ativa mais recente para esta unidade
@@ -144,6 +156,10 @@ export const authenticateProfissional = async (
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle();
+
+  if (settingsError) {
+    throw new AgendaServiceError('SUPABASE_ERROR', 'Erro ao carregar a configuração ativa da agenda.', settingsError);
+  }
 
   // Em vez de retornar erro, permitimos o acesso mas com nenhum dia liberado.
   // Isso permite mostrar uma tela digna de "Nenhuma agenda aberta no momento"
@@ -165,7 +181,11 @@ export const authenticateProfissional = async (
     .in('data', safeSettingsData.dias_liberados || [])
     .order('data');
 
-  const disponibilidadeEnviada = (respostas ?? []) as { data: string; periodos: string[]; status_manha: string | null; status_tarde: string | null }[];
+  if (respError) {
+    throw new AgendaServiceError('SUPABASE_ERROR', 'Erro ao carregar disponibilidades já enviadas.', respError);
+  }
+
+  const disponibilidadeEnviada = (respostas ?? []) as AgendaAuthResult['disponibilidadeEnviada'];
 
   // Identifica quais dias dos 'liberados' ainda não foram respondidos
   const respondidosSet = new Set(disponibilidadeEnviada.map(r => r.data));
@@ -197,6 +217,17 @@ export const saveDisponibilidades = async (
   settingsId: string,
   disponibilidades: { data: string; periodos: string[] }[]
 ): Promise<void> => {
+  assertValidUuid(unitId, 'Unidade');
+  assertValidUuid(profissionalId, 'Profissional');
+  assertValidUuid(settingsId, 'Configuração da agenda');
+  if (!profissionalNome.trim()) {
+    throw new AgendaServiceError('VALIDATION_ERROR', 'Nome da profissional inválido.');
+  }
+  disponibilidades.forEach(disp => {
+    assertValidISODate(disp.data);
+    assertValidAgendaPeriods(disp.periodos);
+  });
+
   // Para cada item, inserimos e marcamos 'conflito' baseado numa query em processed_data
 
   const datas = disponibilidades.map(d => d.data);
@@ -210,7 +241,7 @@ export const saveDisponibilidades = async (
     .eq('profissional', profissionalNome)
     .in('data', datas);
 
-  const atendimentosMap = new Map<string, any[]>();
+  const atendimentosMap = new Map<string, AgendaAtendimento[]>();
   if (rawAtendimentosData) {
     const atendimentosData = rawAtendimentosData.map(r => ({
       DATA: r.data,
@@ -219,7 +250,7 @@ export const saveDisponibilidades = async (
       'PERÍODO': r.periodo,
       STATUS: r.status
     }));
-    atendimentosData.forEach((atendimento: any) => {
+    atendimentosData.forEach((atendimento: AgendaAtendimento) => {
       // Ajuste para formato YYYY-MM-DD caso não esteja
       // Se 'DATA' já for YYYY-MM-DD apenas coloca no MAP
       const dataIso = typeof atendimento.DATA === 'string' && atendimento.DATA.includes('T')
@@ -244,7 +275,7 @@ export const saveDisponibilidades = async (
       if (at.STATUS === 'CANCELADO' || at.STATUS === 'REAGENDADO') return; // Ignora cancelados
       if (at.HORARIO) {
         const [h, m] = at.HORARIO.split(':').map(Number);
-        const duracao = parseFloat(at['PERÍODO']?.replace(',', '.') || '1');
+        const duracao = parseFloat(at['PERÍODO']?.toString().replace(',', '.') || '1');
         const start = h + ((m || 0) / 60);
         const end = start + duracao;
 
@@ -253,9 +284,9 @@ export const saveDisponibilidades = async (
       }
     });
 
-    const isNao = disp.periodos.some(p => PERIODOS_NAO.includes(p));
-    const hasManha = disp.periodos.some(p => PERIODOS_MANHA.includes(p));
-    const hasTarde = disp.periodos.some(p => PERIODOS_TARDE.includes(p));
+    const isNao = disp.periodos.some(p => AGENDA_PERIODS.NAO.includes(p as never));
+    const hasManha = disp.periodos.some(p => AGENDA_PERIODS.MANHA.includes(p as never));
+    const hasTarde = disp.periodos.some(p => AGENDA_PERIODS.TARDE.includes(p as never));
 
     let statusManha: string | null = null;
     let statusTarde: string | null = null;
@@ -298,9 +329,12 @@ export const saveDisponibilidades = async (
   });
 
   if (upsertRows.length > 0) {
-    console.log('--- DEBUG AGENDA ---');
-    console.log('SettingsId:', settingsId);
-    console.log('Payload First Row:', upsertRows[0]);
+    logger.debug('Salvando disponibilidades', {
+      settingsId,
+      profissionalId,
+      total: upsertRows.length,
+      firstDate: upsertRows[0]?.data,
+    });
 
     // Voltamos para a string de colunas para garantir total compatibilidade com a versão do supabase-js
     const { error } = await supabase
@@ -310,8 +344,8 @@ export const saveDisponibilidades = async (
       });
 
     if (error) {
-      console.error('Erro ao salvar disponibilidades:', error);
-      throw new Error('Falha ao registrar disponibilidades.');
+      logger.error('Erro ao salvar disponibilidades', { unitId, profissionalId, error });
+      throw new AgendaServiceError('SAVE_FAILED', 'Falha ao registrar disponibilidades.', error);
     }
   }
 };
@@ -329,6 +363,10 @@ export const getDisponibilidades = async (
   endDate: string,
   settingsId?: string
 ): Promise<AgendaDisponibilidade[]> => {
+  assertValidUuid(unitId, 'Unidade');
+  assertValidDateRange(startDate, endDate);
+  if (settingsId) assertValidUuid(settingsId, 'Configuração da agenda');
+
   let query = supabase
     .from('agenda_disponibilidade')
     .select(`
@@ -346,11 +384,11 @@ export const getDisponibilidades = async (
   const { data, error } = await query.order('data', { ascending: true });
 
   if (error) {
-    console.error('Erro ao buscar disponibilidades:', error);
-    throw error;
+    logger.error('Erro ao buscar disponibilidades', { unitId, startDate, endDate, error });
+    throw new AgendaServiceError('SUPABASE_ERROR', 'Erro ao buscar disponibilidades.', error);
   }
 
-  return data as any; // Cast tipado
+  return (data ?? []) as AgendaDisponibilidade[];
 };
 
 /**
@@ -362,6 +400,10 @@ export const getProfissionaisLivres = async (
   dataStr: string,
   settingsId?: string
 ): Promise<AgendaDisponibilidade[]> => {
+  assertValidUuid(unitId, 'Unidade');
+  assertValidISODate(dataStr);
+  if (settingsId) assertValidUuid(settingsId, 'Configuração da agenda');
+
   let query = supabase
     .from('agenda_disponibilidade')
     .select(`
@@ -371,7 +413,10 @@ export const getProfissionaisLivres = async (
     .eq('unit_id', unitId)
     .eq('data', dataStr)
     .eq('conflito', false) // Exclui conflitos detectados
-    .or('status_manha.eq.LIVRE,status_tarde.eq.LIVRE'); // Precisa ter pelo menos um período LIVRE
+    .or(FREE_AGENDA_STATUSES.flatMap(status => [
+      `status_manha.eq.${status}`,
+      `status_tarde.eq.${status}`,
+    ]).join(',')); // Precisa ter pelo menos um período livre
 
   if (settingsId) {
     query = query.eq('settings_id', settingsId);
@@ -380,24 +425,25 @@ export const getProfissionaisLivres = async (
   const { data, error } = await query;
 
   if (error) {
-    console.error('Erro ao buscar profissionais livres:', error);
-    return [];
+    logger.error('Erro ao buscar profissionais livres', { unitId, dataStr, error });
+    throw new AgendaServiceError('SUPABASE_ERROR', 'Erro ao buscar profissionais livres.', error);
   }
 
   // Filtro adicional no JS para garantir exclusividade e limpeza da lista
-  return (data as any[]).filter(disp => {
+  return ((data ?? []) as AgendaDisponibilidade[]).filter(disp => {
     // Exclui se tiver qualquer impedimento no outro turno (CLIENTE, NÃO, RESERVA, etc)
-    const impedimentos = ['CLIENTE', 'NÃO', 'RESERVA', 'FALTOU', 'CANCELOU'];
-    
-    if (impedimentos.includes(disp.status_manha || '') || impedimentos.includes(disp.status_tarde || '')) {
+    if (
+      AGENDA_BLOCKING_STATUSES.includes(disp.status_manha as never) ||
+      AGENDA_BLOCKING_STATUSES.includes(disp.status_tarde as never)
+    ) {
       return false;
     }
 
-    const isLivreManha = disp.status_manha === 'LIVRE';
-    const isLivreTarde = disp.status_tarde === 'LIVRE';
+    const isLivreManha = isFreeAgendaStatus(disp.status_manha);
+    const isLivreTarde = isFreeAgendaStatus(disp.status_tarde);
 
     return isLivreManha || isLivreTarde;
-  }) as any;
+  });
 };
 
 /**
@@ -410,6 +456,13 @@ export const syncProfissionalAvailability = async (
   dataStr: string
 ): Promise<void> => {
   try {
+    assertValidUuid(unitId, 'Unidade');
+    assertValidUuid(profissionalId, 'Profissional');
+    assertValidISODate(dataStr);
+    if (!profissionalNome.trim()) {
+      throw new AgendaServiceError('VALIDATION_ERROR', 'Nome da profissional inválido.');
+    }
+
     // 1. Busca disponibilidades atuais para pegar os 'periodos' (sentimentos originais)
     const { data: currentDisp, error: fetchDispError } = await supabase
       .from('agenda_disponibilidade')
@@ -458,9 +511,9 @@ export const syncProfissionalAvailability = async (
 
     // 3. Recalcula status baseados nos periodos originais e status atual
     const periodos: string[] = currentDisp.periodos || [];
-    const isNaoOriginal = periodos.some((p: string) => PERIODOS_NAO.includes(p));
-    const hasManhaOriginal = periodos.some((p: string) => PERIODOS_MANHA.includes(p));
-    const hasTardeOriginal = periodos.some((p: string) => PERIODOS_TARDE.includes(p));
+    const isNaoOriginal = periodos.some((p: string) => AGENDA_PERIODS.NAO.includes(p as never));
+    const hasManhaOriginal = periodos.some((p: string) => AGENDA_PERIODS.MANHA.includes(p as never));
+    const hasTardeOriginal = periodos.some((p: string) => AGENDA_PERIODS.TARDE.includes(p as never));
 
     let statusManha: string | null = currentDisp.status_manha;
     let statusTarde: string | null = currentDisp.status_tarde;
@@ -497,8 +550,9 @@ export const syncProfissionalAvailability = async (
     if (updateError) throw updateError;
 
   } catch (err) {
-    console.error('Erro ao sincronizar disponibilidade da profissional:', err);
-    throw err;
+    const serviceError = toAgendaServiceError(err, 'SUPABASE_ERROR', 'Erro ao sincronizar disponibilidade da profissional.');
+    logger.error(serviceError.userMessage, { unitId, profissionalId, dataStr, error: err });
+    throw serviceError;
   }
 };
 /**
@@ -507,6 +561,7 @@ export const syncProfissionalAvailability = async (
  */
 export const initializeUnitAgenda = async (unitId: string): Promise<void> => {
   try {
+    assertValidUuid(unitId, 'Unidade');
     // 1. Verifica se já existe
     const { data: existing } = await supabase
       .from('agenda_settings')
@@ -523,16 +578,16 @@ export const initializeUnitAgenda = async (unitId: string): Promise<void> => {
       .insert({
         unit_id: unitId,
         dias_liberados: [],
-        periodos_cadastrados: ['8 horas', '6 horas', '4 horas manhã', '4 horas tarde', 'NÃO DISPONIVEL'],
+        periodos_cadastrados: [...PUBLIC_AGENDA_DEFAULT_PERIODS],
         is_link_active: true,
         is_system: false,
         system_identifier: 'MANUAL_INITIALIZATION'
       });
 
     if (insErr) throw insErr;
-    console.log(`Agenda inicializada para unidade ${unitId}`);
+    logger.info('Agenda inicializada para unidade', { unitId });
 
   } catch (err) {
-    console.error('Erro ao inicializar agenda da unidade:', err);
+    logger.error('Erro ao inicializar agenda da unidade', { unitId, error: err });
   }
 };

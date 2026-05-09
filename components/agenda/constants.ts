@@ -1,20 +1,16 @@
+import { AGENDA_PERIODS } from '../../constants/agenda';
+
 export type ActiveTab = 'gestao' | 'configuracoes';
 export type StatusPeriod = 'M' | 'T';
 export type FilterType = 'TODOS' | 'CLIENTE' | 'LIVRE' | 'NÃO' | 'FALTOU' | 'CANCELOU';
 export type StatusOption = 'LIVRE' | 'NÃO' | 'CANCELOU' | 'FALTOU' | 'RESERVA' | 'LIMPAR';
 
 // Mapeamento fiel ao app externo (AgendaExternaPage)
-export const PERIODOS_MANHA = ['8 horas', '6 horas', '4 horas manhã'];
-export const PERIODOS_TARDE = ['8 horas', '6 horas', '4 horas tarde'];
-export const PERIODOS_NAO = ['NÃO DISPONIVEL', 'NÃO DISPONÍVEL', 'NÃO', 'NAO'];
+export const PERIODOS_MANHA = [...AGENDA_PERIODS.MANHA];
+export const PERIODOS_TARDE = [...AGENDA_PERIODS.TARDE];
+export const PERIODOS_NAO = [...AGENDA_PERIODS.NAO];
 
-export const MOBILE_STATUS_OPTIONS = [
-   '8 horas',
-   '6 horas',
-   '4 horas manhã',
-   '4 horas tarde',
-   'NÃO DISPONIVEL'
-];
+export const MOBILE_STATUS_OPTIONS = [...AGENDA_PERIODS.MOBILE_OPTIONS];
 
 export const STATUS_LABELS: Record<StatusOption, { label: string; color: string; bgColor?: string }> = {
    LIVRE: { label: 'LIVRE', color: 'text-brand-cyan' },

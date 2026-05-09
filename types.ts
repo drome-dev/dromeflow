@@ -556,32 +556,96 @@ export interface ActivityStats {
 // ============================================================================
 
 export interface AgendaSettings {
-  id: string;
+  id: string | null;
   unit_id: string;
-  dias_liberados: number[]; // ex: [1, 2, 3, 4, 5] para segunda a sexta
-  periodos_cadastrados: string[]; // ex: ['Manhã', 'Tarde', 'Integral']
+  dias_liberados: string[]; // datas ISO YYYY-MM-DD liberadas para envio
+  periodos_cadastrados: string[];
   is_link_active: boolean;
+  is_system?: boolean;
+  system_identifier?: string | null;
   created_at?: string;
   updated_at?: string;
 }
+
+export interface AgendaProfissional {
+  id: string;
+  nome: string;
+  whatsapp: string | null;
+  unit_id?: string | null;
+  habilidade?: string | null;
+  status?: string | null;
+}
+
+export interface AgendaUnidade {
+  id: string;
+  unit_name: string;
+  unit_code?: string;
+}
+
+export type AgendaStatusTurno =
+  | 'CLIENTE'
+  | 'LIVRE'
+  | 'NÃO'
+  | 'RESERVA'
+  | 'FALTOU'
+  | 'CANCELOU'
+  | '8 horas'
+  | '6 horas'
+  | '4 horas manhã'
+  | '4 horas tarde'
+  | ''
+  | null;
 
 export interface AgendaDisponibilidade {
   id: string;
   unit_id: string;
   profissional_id: string;
   data: string; // ISO Date YYYY-MM-DD
-  periodos: string[]; // ex: ['Manhã', 'Tarde']
+  periodos: string[];
   selecao_real: string | null;
+  status_manha: AgendaStatusTurno;
+  status_tarde: AgendaStatusTurno;
   conflito: boolean;
+  is_manual?: boolean;
+  settings_id?: string | null;
   created_at?: string;
   updated_at?: string;
   
   // Joins (para UI)
-  profissional?: {
-    id: string;
-    nome: string;
-    whatsapp: string;
-  };
+  profissional?: AgendaProfissional;
+}
+
+export interface AgendaAtendimento {
+  id?: string | number;
+  ATENDIMENTO_ID?: string | number;
+  DATA?: string | null;
+  HORARIO?: string | null;
+  'SERVIÇO'?: string | null;
+  'PERÍODO'?: string | number | null;
+  STATUS?: string | null;
+  PROFISSIONAL?: string | null;
+  CLIENTE?: string | null;
+  cliente?: string | null;
+  profissional?: string | null;
+  data?: string | null;
+  horario?: string | null;
+  servico?: string | null;
+  periodo?: string | number | null;
+  atendimento_id?: string | number | null;
+}
+
+export interface AgendaAuthResult {
+  profissional: AgendaProfissional;
+  configuracoes: AgendaSettings;
+  unidade: AgendaUnidade;
+  jaEnviou: boolean;
+  diasPendentes: string[];
+  disponibilidadeEnviada: {
+    data: string;
+    periodos: string[];
+    status_manha: AgendaStatusTurno;
+    status_tarde: AgendaStatusTurno;
+  }[];
 }
 
 // ============================================================================

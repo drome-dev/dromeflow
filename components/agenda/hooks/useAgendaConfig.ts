@@ -1,17 +1,54 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../../services/supabaseClient';
 import { saveAgendaSettings } from '../../../services/agenda/agenda.service';
+import { getAgendaErrorMessage } from '../../../services/agenda/agenda.errors';
+import type { AgendaDisponibilidade, AgendaProfissional, AgendaSettings, AgendaStatusTurno } from '../../../types';
 
-export const useAgendaConfig = (selectedUnit: any) => {
-   const [configSettings, setConfigSettings] = useState<any>({
-      dias_liberados: [],
-      periodos_cadastrados: [],
-      is_link_active: false
-   });
-   const [todasProfissionais, setTodasProfissionais] = useState<any[]>([]);
-   const [todasDisponibilidades, setTodasDisponibilidades] = useState<any[]>([]);
-   const [isSavingConfig, setIsSavingConfig] = useState(false);
-   const [hasSynced, setHasSynced] = useState(false);
+type AgendaSelectedUnit = {
+   id: string;
+   unit_name?: string;
+   unit_code?: string;
+};
+
+type AgendaConfigData = {
+   configSettings: AgendaSettings;
+   todasProfissionais: AgendaProfissional[];
+   todasDisponibilidades: AgendaDisponibilidade[];
+};
+
+type AgendaStatusUpdate = {
+   unit_id: string;
+   profissional_id: string;
+   data: string;
+   settings_id: string | null;
+   periodos: string[];
+   status_manha?: AgendaStatusTurno;
+   status_tarde?: AgendaStatusTurno;
+   conflito: boolean;
+   is_manual: boolean;
+};
+
+const DEFAULT_CONFIG_SETTINGS: AgendaSettings = {
+   id: null,
+   unit_id: '',
+   dias_liberados: [],
+   periodos_cadastrados: [],
+   is_link_active: false,
+};
+
+const agendaConfigQueryKey = (unitId?: string) => ['agenda', 'config', unitId ?? 'no-unit'] as const;
+
+const getVisibleSettings = (settingsList: AgendaSettings[] | null): AgendaSettings | null => {
+   if (!settingsList || settingsList.length === 0) return null;
+   const mostRecent = settingsList[0];
+   const lastWithDays = settingsList.find(s => Array.isArray(s.dias_liberados) && s.dias_liberados.length > 0);
+   return lastWithDays || mostRecent;
+};
+
+export const useAgendaConfig = (selectedUnit: AgendaSelectedUnit | null | undefined) => {
+   const queryClient = useQueryClient();
+   const [configSettingsDraft, setConfigSettingsDraft] = useState<AgendaSettings>(DEFAULT_CONFIG_SETTINGS);
 
    // Métricas e Estados Visuais de Configuração
    const [profMetricas, setProfMetricas] = useState<Record<string, any>>({});
@@ -20,116 +57,146 @@ export const useAgendaConfig = (selectedUnit: any) => {
    const [profSearchTerm, setProfSearchTerm] = useState('');
    const [calendarViewDate, setCalendarViewDate] = useState(new Date());
 
-   const loadConfigData = useCallback(async () => {
-      if (!selectedUnit?.id || selectedUnit.id === 'ALL') return;
-      try {
-         // Tenta buscar os registros mais recentes para encontrar o último válido (com dias)
-         const { data: settingsList } = await supabase
-            .from('agenda_settings')
-            .select('*')
-            .eq('unit_id', selectedUnit.id)
-            .order('created_at', { ascending: false })
-            .limit(10);
+   const enabled = Boolean(selectedUnit?.id && selectedUnit.id !== 'ALL');
 
-         if (settingsList && settingsList.length > 0) {
-            // O registro absoluto mais recente (mesmo que vazio) para manter as configurações de sistema
-            const mostRecent = settingsList[0];
-            
-            // O registro mais recente que de fato POSSUI dias liberados
-            const lastWithDays = settingsList.find(s => s.dias_liberados && s.dias_liberados.length > 0);
-
-            if (lastWithDays) {
-               // Priorizamos o registro com dias para o calendário, mas mantemos o ID do mais recente para UPSERTS se necessário
-               // Na verdade, como o save cria novo, usamos o lastWithDays como referência de visualização
-               setConfigSettings(lastWithDays);
-            } else {
-               setConfigSettings(mostRecent);
-            }
+   const configQuery = useQuery<AgendaConfigData>({
+      queryKey: agendaConfigQueryKey(selectedUnit?.id),
+      enabled,
+      queryFn: async () => {
+         if (!selectedUnit?.id || selectedUnit.id === 'ALL') {
+            return {
+               configSettings: DEFAULT_CONFIG_SETTINGS,
+               todasProfissionais: [],
+               todasDisponibilidades: [],
+            };
          }
 
-         // Profissionais para Config
-         const { data: profsData } = await supabase
-            .from('profissionais')
-            .select('id, nome, whatsapp, habilidade, status')
-            .eq('unit_id', selectedUnit.id)
-            .or('status.ilike.ativo,status.ilike.ativa,status.is.null')
-            .order('nome');
+         const [settingsResult, profissionaisResult, disponibilidadesResult] = await Promise.all([
+            supabase
+               .from('agenda_settings')
+               .select('*')
+               .eq('unit_id', selectedUnit.id)
+               .order('created_at', { ascending: false })
+               .limit(10),
+            supabase
+               .from('profissionais')
+               .select('id, nome, whatsapp, habilidade, status, unit_id')
+               .eq('unit_id', selectedUnit.id)
+               .or('status.ilike.ativo,status.ilike.ativa,status.is.null')
+               .order('nome'),
+            supabase
+               .from('agenda_disponibilidade')
+               .select('*, profissional:profissionais(id, nome, whatsapp, habilidade, status, unit_id)')
+               .eq('unit_id', selectedUnit.id),
+         ]);
 
-         // Disponibilidades para Config (Filtra pela versão atual para evitar fantasmas de versões antigas)
-         let dispQuery = supabase
-            .from('agenda_disponibilidade')
-            .select('*')
-            .eq('unit_id', selectedUnit.id);
+         if (settingsResult.error) throw settingsResult.error;
+         if (profissionaisResult.error) throw profissionaisResult.error;
+         if (disponibilidadesResult.error) throw disponibilidadesResult.error;
 
-         const { data: dispData } = await dispQuery;
+         const visibleSettings = getVisibleSettings((settingsResult.data ?? []) as AgendaSettings[]);
 
-         setTodasProfissionais(profsData || []);
-         setTodasDisponibilidades(dispData || []);
-         setHasSynced(true);
-      } catch (err) {
-         console.error('Erro ao buscar metadados de configuração', err);
-      }
-   }, [selectedUnit]);
-
-   const handleStatusUpdate = async (profId: string, status: string, periodo: 'M' | 'T', dateStr: string) => {
-      if (!selectedUnit?.id) return;
-      try {
-         const updateData: any = {
-            unit_id: selectedUnit.id,
-            profissional_id: profId,
-            data: dateStr,
-            settings_id: configSettings?.id 
+         return {
+            configSettings: visibleSettings || { ...DEFAULT_CONFIG_SETTINGS, unit_id: selectedUnit.id },
+            todasProfissionais: (profissionaisResult.data ?? []) as AgendaProfissional[],
+            todasDisponibilidades: (disponibilidadesResult.data ?? []) as AgendaDisponibilidade[],
          };
+      },
+   });
 
-         // Detectamos se o profissional nesse dia é de jornada integral (8h ou 6h)
-         const currentDisp = todasDisponibilidades.find(d => d.profissional_id === profId && d.data.includes(dateStr));
-         const isFullDay = currentDisp?.periodos?.some((p: string) => p === '8 horas' || p === '6 horas');
+   useEffect(() => {
+      if (configQuery.data?.configSettings) {
+         setConfigSettingsDraft(configQuery.data.configSettings);
+      }
+   }, [configQuery.data?.configSettings]);
 
-         // Preservamos os períodos existentes por padrão, a menos que o status seja uma nova carga horária
-         updateData.periodos = currentDisp?.periodos || [];
+   const invalidateConfig = useCallback(async () => {
+      await queryClient.invalidateQueries({ queryKey: agendaConfigQueryKey(selectedUnit?.id) });
+   }, [queryClient, selectedUnit?.id]);
 
-         if (status === 'LIMPAR') {
-            // Limpeza profunda: Remove status e a própria jornada de trabalho
-            updateData.status_manha = null;
-            updateData.status_tarde = null;
-            updateData.periodos = [];
-            updateData.is_manual = false; // Permite ser reconfigurado do zero (volta para '—')
-         } else if (status === '8 horas' || status === '6 horas' || (isFullDay && ['RESERVA', 'CANCELOU', 'FALTOU', 'LIVRE', 'NÃO'].includes(status))) {
-            // Cargas horárias integrais OU status manuais em profissionais de dia inteiro ocupam ambos os períodos
-            updateData.status_manha = status === 'LIVRE' ? 'LIVRE' : status;
-            updateData.status_tarde = status === 'LIVRE' ? 'LIVRE' : status;
-            
-            // Se o status for a carga horária em si, atualizamos a coluna periodos
-            if (status === '8 horas' || status === '6 horas') {
-               updateData.periodos = [status];
-            }
-         } else if (status === '4 horas manhã') {
-            updateData.status_manha = status;
-            updateData.periodos = ['4 horas manhã'];
-         } else if (status === '4 horas tarde') {
-            updateData.status_tarde = status;
-            updateData.periodos = ['4 horas tarde'];
-         } else {
-            updateData[periodo === 'M' ? 'status_manha' : 'status_tarde'] = status;
-         }
-
-         // Sempre que houver uma intervenção manual, limpamos o alerta de conflito visual (Atenção!) 
-         // e marcamos como manual para evitar que o sync automático sobrescreva.
-         updateData.conflito = false;
-         updateData.is_manual = true;
-
+   const statusMutation = useMutation({
+      mutationFn: async (updateData: AgendaStatusUpdate) => {
          const { error } = await supabase
             .from('agenda_disponibilidade')
-            .upsert(updateData, { onConflict: 'settings_id, profissional_id, data' });
+            .upsert(updateData, { onConflict: 'settings_id,profissional_id,data' });
 
          if (error) throw error;
-         loadConfigData();
-      } catch (err) {
-         console.error('Erro ao atualizar status profissional na config:', err);
+      },
+      onSuccess: invalidateConfig,
+   });
+
+   const settingsMutation = useMutation({
+      mutationFn: async (newSettings: AgendaSettings) => {
+         if (!selectedUnit?.id || selectedUnit.id === 'ALL') return null;
+         return saveAgendaSettings(selectedUnit.id, newSettings);
+      },
+      onSuccess: async (_saved, newSettings) => {
+         setConfigSettingsDraft(newSettings);
+         await invalidateConfig();
+      },
+   });
+
+   useEffect(() => {
+      if (!enabled || !selectedUnit?.id) return;
+      const channel = supabase
+         .channel('agenda_config_changes')
+         .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'agenda_disponibilidade', filter: `unit_id=eq.${selectedUnit.id}` },
+            () => invalidateConfig()
+         )
+         .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'agenda_settings', filter: `unit_id=eq.${selectedUnit.id}` },
+            () => invalidateConfig()
+         )
+         .subscribe();
+      return () => { supabase.removeChannel(channel); };
+   }, [enabled, selectedUnit?.id, invalidateConfig]);
+
+   const handleStatusUpdate = async (profId: string, status: string, periodo: 'M' | 'T', dateStr: string) => {
+      if (!selectedUnit?.id || selectedUnit.id === 'ALL') return;
+
+      const currentDisp = (configQuery.data?.todasDisponibilidades ?? [])
+         .find(d => d.profissional_id === profId && d.data.includes(dateStr));
+      const isFullDay = currentDisp?.periodos?.some((p: string) => p === '8 horas' || p === '6 horas');
+
+      const updateData: AgendaStatusUpdate = {
+         unit_id: selectedUnit.id,
+         profissional_id: profId,
+         data: dateStr,
+         settings_id: configSettingsDraft?.id ?? null,
+         periodos: currentDisp?.periodos || [],
+         conflito: false,
+         is_manual: true,
+      };
+
+      if (status === 'LIMPAR') {
+         updateData.status_manha = null;
+         updateData.status_tarde = null;
+         updateData.periodos = [];
+         updateData.is_manual = false;
+      } else if (status === '8 horas' || status === '6 horas' || (isFullDay && ['RESERVA', 'CANCELOU', 'FALTOU', 'LIVRE', 'NÃO'].includes(status))) {
+         updateData.status_manha = status as AgendaStatusTurno;
+         updateData.status_tarde = status as AgendaStatusTurno;
+         if (status === '8 horas' || status === '6 horas') updateData.periodos = [status];
+      } else if (status === '4 horas manhã') {
+         updateData.status_manha = status as AgendaStatusTurno;
+         updateData.periodos = ['4 horas manhã'];
+      } else if (status === '4 horas tarde') {
+         updateData.status_tarde = status as AgendaStatusTurno;
+         updateData.periodos = ['4 horas tarde'];
+      } else if (periodo === 'M') {
+         updateData.status_manha = status as AgendaStatusTurno;
+      } else {
+         updateData.status_tarde = status as AgendaStatusTurno;
       }
+
+      await statusMutation.mutateAsync(updateData);
    };
 
    const loadProfissionalMetrics = async (profId: string, profNome: string) => {
+      if (!selectedUnit?.id || selectedUnit.id === 'ALL') return;
       try {
          const response = await fetch(`${window.location.origin}/api/metrics/professional?id=${profId}&nome=${encodeURIComponent(profNome)}&unit_id=${selectedUnit.id}`);
          if (!response.ok) throw new Error('Falha ao carregar métricas');
@@ -140,44 +207,26 @@ export const useAgendaConfig = (selectedUnit: any) => {
       }
    };
 
-   const handleSaveSettings = async (newSettings: any) => {
-      if (!selectedUnit?.id) return;
-      setIsSavingConfig(true);
+   const handleSaveSettings = async (newSettings: AgendaSettings) => {
       try {
-         await saveAgendaSettings(selectedUnit.id, newSettings);
-         setConfigSettings(newSettings);
+         await settingsMutation.mutateAsync(newSettings);
       } catch (err) {
          console.error('Erro ao salvar as configurações da agenda', err);
-         alert('Erro ao salvar as configurações.');
-      } finally {
-         setIsSavingConfig(false);
+         alert(getAgendaErrorMessage(err, 'Erro ao salvar as configurações.'));
       }
    };
 
-   useEffect(() => {
-      loadConfigData();
-   }, [loadConfigData]);
-
-   // Realtime listener for availability changes in config
-   useEffect(() => {
-      if (!selectedUnit?.id || selectedUnit.id === 'ALL') return;
-      const channel = supabase
-         .channel('agenda_config_changes')
-         .on(
-            'postgres_changes',
-            { event: '*', schema: 'public', table: 'agenda_disponibilidade', filter: `unit_id=eq.${selectedUnit.id}` },
-            () => loadConfigData()
-         )
-         .subscribe();
-      return () => { supabase.removeChannel(channel); };
-   }, [selectedUnit, loadConfigData]);
+   const queryData = configQuery.data;
 
    return {
-      configSettings, setConfigSettings,
-      todasProfissionais,
-      todasDisponibilidades,
-      isSavingConfig,
-      hasSynced,
+      configSettings: configSettingsDraft,
+      setConfigSettings: setConfigSettingsDraft,
+      todasProfissionais: queryData?.todasProfissionais ?? [],
+      todasDisponibilidades: queryData?.todasDisponibilidades ?? [],
+      isSavingConfig: settingsMutation.isPending,
+      hasSynced: Boolean(queryData),
+      loading: configQuery.isFetching,
+      error: configQuery.error ? getAgendaErrorMessage(configQuery.error) : null,
       profMetricas,
       profWithMetrics, setProfWithMetrics,
       activeFilter, setActiveFilter,
@@ -185,6 +234,6 @@ export const useAgendaConfig = (selectedUnit: any) => {
       calendarViewDate, setCalendarViewDate,
       handleStatusUpdate,
       handleSaveSettings,
-      refreshConfig: loadConfigData
+      refreshConfig: invalidateConfig
    };
 };

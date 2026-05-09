@@ -38,6 +38,9 @@ export const AgendaWeekSummary: React.FC<AgendaWeekSummaryProps> = ({
    const fmt = (d: Date) =>
       d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
 
+   const normalizeName = (name: unknown) =>
+      String(name || '').trim().toLowerCase();
+
    const firstDay = weekDays[0];
    const lastDay = weekDays[5];
    const headerLabel = `${fmt(firstDay)} a ${fmt(lastDay)}`;
@@ -80,23 +83,27 @@ export const AgendaWeekSummary: React.FC<AgendaWeekSummaryProps> = ({
 
       const uniqueProfs = Array.from(profsDayMap.values());
 
+      const atendimentosDia = atendimentosSemana.filter((a: any) => {
+         const aDate = typeof a.DATA === 'string' && a.DATA.includes('T') ? a.DATA.split('T')[0] : a.DATA;
+         return aDate === iso;
+      });
+
+      const profissionaisComCliente = new Set(
+         atendimentosDia
+            .map((a: any) => normalizeName(a.PROFISSIONAL))
+            .filter(Boolean)
+      );
+
       // 2. Classificação de Status com Prioridade (Exclusividade)
       let livre = 0;
       let nao = 0;
       let cancelou = 0;
       let faltou = 0;
       let reserva = 0;
-      let clienteHeadcount = 0;
+      const clienteHeadcount = profissionaisComCliente.size;
 
       uniqueProfs.forEach(p => {
-         const profNome = (p.profissional?.nome || '').trim().toLowerCase();
-         
-         // Verifica se a profissional tem agendamento real neste dia
-         const hasAtendimento = atendimentosSemana.some((a: any) => {
-            const aDate = typeof a.DATA === 'string' && a.DATA.includes('T') ? a.DATA.split('T')[0] : a.DATA;
-            const atProf = (a.PROFISSIONAL || '').trim().toLowerCase();
-            return aDate === iso && !!a.PROFISSIONAL && atProf === profNome;
-         });
+         const profNome = normalizeName(p.profissional?.nome);
 
          const hasLivreManual = p.status_manha === 'LIVRE' || p.status_tarde === 'LIVRE';
          const hasReservaManual = p.status_manha === 'RESERVA' || p.status_tarde === 'RESERVA';
@@ -105,8 +112,9 @@ export const AgendaWeekSummary: React.FC<AgendaWeekSummaryProps> = ({
          const hasNaoManual = p.status_manha === 'NÃO' || p.status_tarde === 'NÃO';
 
          // HIERARQUIA DE PRIORIDADE (Mutuamente Exclusivo)
-         if (hasAtendimento) {
-            clienteHeadcount++;
+         if (profissionaisComCliente.has(profNome)) {
+            // Já contado em clienteHeadcount a partir dos atendimentos reais.
+            return;
          } else if (hasReservaManual) {
             reserva++;
          } else if (hasCancelouManual) {
@@ -122,17 +130,8 @@ export const AgendaWeekSummary: React.FC<AgendaWeekSummaryProps> = ({
          }
       });
 
-      // Cliente: Atendimentos com profissional (Métrica de Demanda Atendida)
-      const clienteTotalSpots = atendimentosSemana.filter((a: any) => {
-         const aDate = typeof a.DATA === 'string' && a.DATA.includes('T') ? a.DATA.split('T')[0] : a.DATA;
-         return aDate === iso && !!a.PROFISSIONAL;
-      }).length;
-
       // Sistema: TODOS os atendimentos do dia (Demanda Total)
-      const sistema = atendimentosSemana.filter((a: any) => {
-         const aDate = typeof a.DATA === 'string' && a.DATA.includes('T') ? a.DATA.split('T')[0] : a.DATA;
-         return aDate === iso;
-      }).length;
+      const sistema = atendimentosDia.length;
 
       // Capacidade Real = Headcount (Livre + Ocupada + Reserva)
       // Usamos clienteHeadcount para contar PESSOAS reais, não serviços duplicados

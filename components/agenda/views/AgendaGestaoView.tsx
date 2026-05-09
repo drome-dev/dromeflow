@@ -1,9 +1,7 @@
 import React from 'react';
-import { Icon } from '../../../ui/Icon';
+import { Icon } from '../../ui/Icon';
 import { AgendaCalendar } from '../ui/AgendaCalendar';
 import { WeekSummary } from '../ui/WeekSummary';
-import { useDroppable } from '@dnd-kit/core';
-import { AtendimentoCard } from './AtendimentoCard';
 
 interface AgendaGestaoViewProps {
    selectedDate: Date;
