@@ -97,31 +97,59 @@ export const ensureDefaultColumnsForUnit = async (_unitId: string, _unitName?: s
 
 export const fetchCards = async (unitId: string): Promise<RecrutadoraCard[]> => {
   const selAll = 'id, created_at, unit_id, unidade, status, position, nome, whatsapp, color_card, data_nasc, fumante, estado_civil, filhos, qto_filhos, rotina_filhos, endereco, rg, cpf, dias_livres, dias_semana, exp_residencial, ref_residencial, exp_comercial, ref_comercial, sit_atual, motivo_cadastro, transporte, observacao, assinatura, updated_at';
-  let { data, error } = await supabase
-    .from('recrutadora')
-    .select(selAll)
-    .eq('unit_id', unitId)
-    .order('status', { ascending: true })
-    .order('position', { ascending: true })
-    .order('created_at', { ascending: false });
-    
-  if (error) throw error;
-  return (data as any) || [];
+  const pageSize = 1000;
+  let from = 0;
+  let allRows: any[] = [];
+
+  while (true) {
+    const to = from + pageSize - 1;
+    const { data, error } = await supabase
+      .from('recrutadora')
+      .select(selAll)
+      .eq('unit_id', unitId)
+      .order('status', { ascending: true })
+      .order('position', { ascending: true })
+      .order('created_at', { ascending: false })
+      .range(from, to);
+
+    if (error) throw error;
+    const rows = (data as any[]) || [];
+    allRows = allRows.concat(rows);
+
+    if (rows.length < pageSize) break;
+    from += pageSize;
+  }
+
+  return allRows as RecrutadoraCard[];
 };
 
 export const fetchCardsForUnits = async (unitIds: string[]): Promise<RecrutadoraCard[]> => {
   if (!unitIds || unitIds.length === 0) return [];
   const selAll = 'id, created_at, unit_id, unidade, status, position, nome, whatsapp, color_card, data_nasc, fumante, estado_civil, filhos, qto_filhos, rotina_filhos, endereco, rg, cpf, dias_livres, dias_semana, exp_residencial, ref_residencial, exp_comercial, ref_comercial, sit_atual, motivo_cadastro, transporte, observacao, assinatura, updated_at';
-  let { data, error } = await supabase
-    .from('recrutadora')
-    .select(selAll)
-    .in('unit_id', unitIds)
-    .order('status', { ascending: true })
-    .order('position', { ascending: true })
-    .order('created_at', { ascending: false });
+  const pageSize = 1000;
+  let from = 0;
+  let allRows: any[] = [];
 
-  if (error) throw error;
-  return (data as any) || [];
+  while (true) {
+    const to = from + pageSize - 1;
+    const { data, error } = await supabase
+      .from('recrutadora')
+      .select(selAll)
+      .in('unit_id', unitIds)
+      .order('status', { ascending: true })
+      .order('position', { ascending: true })
+      .order('created_at', { ascending: false })
+      .range(from, to);
+
+    if (error) throw error;
+    const rows = (data as any[]) || [];
+    allRows = allRows.concat(rows);
+
+    if (rows.length < pageSize) break;
+    from += pageSize;
+  }
+
+  return allRows as RecrutadoraCard[];
 };
 
 // Métricas de cadastros por período

@@ -1,6 +1,6 @@
 import * as ftp from 'basic-ftp';
 import path from 'path';
-import { readFileSync, existsSync } from 'fs';
+import { readFileSync, existsSync, readdirSync, statSync, unlinkSync } from 'fs';
 
 /**
  * Script de Deploy FTP para DromeFlow (Ambiente de Desenvolvimento)
@@ -50,9 +50,12 @@ const DANGEROUS_PATHS = [
 ];
 
 /**
- * O caminho seguro permitido para deploy DEV
+ * Caminhos seguros permitidos para deploy DEV
+ *
+ * Alguns provedores já conectam o usuário FTP dentro de `public_html`.
+ * Nesses casos, o destino correto passa a ser apenas `dev`.
  */
-const SAFE_DEV_PATH = 'public_html/dev';
+const SAFE_DEV_PATHS = ['public_html/dev', 'dev'];
 
 /**
  * Valida se todas as variáveis FTP_* necessárias estão presentes
@@ -75,7 +78,7 @@ function validateEnv() {
         console.error('   FTP_PORT=21');
         console.error('   FTP_USER=seu_usuario');
         console.error('   FTP_PASSWORD=sua_senha');
-        console.error('   FTP_DEST=public_html/dev');
+        console.error('   FTP_DEST=public_html/dev  (ou "dev", dependendo da raiz FTP)');
         process.exit(1);
     }
 }
@@ -87,7 +90,7 @@ function validateEnv() {
 function validateDevSupabaseTarget() {
     const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '';
     const baseDomain = process.env.VITE_BASE_DOMAIN || '';
-    const devProjectRef = 'xivgioxraznqshlbgxdj';
+    const devProjectRef = "uframhbsgtxckdxttofo";
 
     if (!supabaseUrl.includes(`${devProjectRef}.supabase.co`)) {
         console.error('❌ Erro: VITE_SUPABASE_URL/SUPABASE_URL não aponta para o projeto DEV.');
@@ -110,7 +113,7 @@ function validateDevSupabaseTarget() {
 
 /**
  * Valida se FTP_DEST é seguro para deploy DEV
- * Aborta se o caminho for perigoso ou diferente de public_html/dev
+ * Aborta se o caminho for perigoso ou diferente dos caminhos DEV permitidos
  */
 function validateRemotePath() {
     const remoteDir = process.env.FTP_DEST;
@@ -123,8 +126,8 @@ function validateRemotePath() {
 
     const normalizedPath = remoteDir.trim();
 
-    // Validação estrita: deve ser EXATAMENTE "public_html/dev"
-    if (normalizedPath !== SAFE_DEV_PATH) {
+    // Validação estrita: deve ser um dos caminhos DEV permitidos
+    if (!SAFE_DEV_PATHS.includes(normalizedPath)) {
         // Verifica se é um caminho perigoso
         for (const dangerous of DANGEROUS_PATHS) {
             if (normalizedPath === dangerous || 
@@ -141,10 +144,11 @@ function validateRemotePath() {
         // Se não é perigoso mas também não é o caminho seguro
         console.error('❌ Erro: FTP_DEST inválido para deploy DEV.');
         console.error(`\nValor atual: "${normalizedPath}"`);
-        console.error(`Valor esperado: "${SAFE_DEV_PATH}"`);
+        console.error(`Valores esperados: ${SAFE_DEV_PATHS.map(p => `"${p}"`).join(' ou ')}`);
         console.error('\nO deploy foi abortado para proteger o servidor.');
         console.error('\nSe você quer fazer deploy em DEV, use:');
-        console.error('   FTP_DEST=public_html/dev');
+        console.error(`   FTP_DEST=${SAFE_DEV_PATHS[0]}  (quando o FTP inicia acima de public_html)`);
+        console.error(`   FTP_DEST=${SAFE_DEV_PATHS[1]}              (quando o FTP inicia dentro de public_html)`);
         console.error('\nSe você quer fazer deploy em PRODUÇÃO, use:');
         console.error('   npm run deploy:prod');
         process.exit(1);
@@ -165,6 +169,34 @@ function validateDistFolder() {
         process.exit(1);
     }
     console.log(`✅ Pasta dist/ encontrada: ${distPath}`);
+}
+
+/**
+ * Remove artefatos pré-comprimidos (.gz/.br) da pasta dist antes do upload DEV.
+ * Alguns hosts/CDNs podem servir esses arquivos com headers inconsistentes.
+ */
+function removePrecompressedArtifacts(distPath) {
+    const exts = new Set(['.gz', '.br']);
+    let removed = 0;
+
+    const walk = (dir) => {
+        const entries = readdirSync(dir, { withFileTypes: true });
+        for (const entry of entries) {
+            const fullPath = path.join(dir, entry.name);
+            if (entry.isDirectory()) {
+                walk(fullPath);
+                continue;
+            }
+            const ext = path.extname(entry.name);
+            if (exts.has(ext)) {
+                unlinkSync(fullPath);
+                removed++;
+            }
+        }
+    };
+
+    walk(distPath);
+    console.log(`✅ Artefatos .gz/.br removidos para deploy DEV: ${removed}`);
 }
 
 /**
@@ -253,6 +285,7 @@ async function deploy() {
 
     const remoteDir = process.env.FTP_DEST;
     const localDir = path.resolve('./dist');
+    removePrecompressedArtifacts(localDir);
 
     try {
         console.log('\n🚀 Iniciando deploy via FTP...');

@@ -474,6 +474,7 @@ const Sidebar: React.FC<SidebarProps> = ({ sidebarOpen, setSidebarOpen }) => {
                   </div>
                   {!isCollapsed && <span className="text-sm font-medium truncate">{moduleInfo?.name || "Tutoriais"}</span>}
                 </button>
+
               </div>
             );
           })()}
