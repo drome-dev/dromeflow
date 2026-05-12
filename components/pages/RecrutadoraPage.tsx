@@ -1,4 +1,4 @@
-import React, { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import React, { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { DragDropContext, Droppable, Draggable, DropResult, DragUpdate } from '@hello-pangea/dnd';
 import { useAuth } from '../../contexts/AuthContext';
@@ -10,6 +10,7 @@ import { Icon } from '../ui/Icon';
 import { startOfTodayISO, startOfWeekISO, startOfMonthISO } from '../../services/utils/dates';
 import { supabase } from '../../services/supabaseClient';
 import { activityLogger } from '../../services/utils/activityLogger.service';
+import { useRealtimeSubscription } from '../../hooks/useRealtimeSubscription';
 
 const RecrutadoraDashboard = lazy(() => import('./RecrutadoraDashboard'));
 
@@ -37,6 +38,17 @@ const RecrutadoraPage: React.FC = () => {
   const [recrutadoraWebhook, setRecrutadoraWebhook] = useState<string | null>(null);
   const [sendingWebhook, setSendingWebhook] = useState<Set<number>>(new Set());
   const [webhookFeedback, setWebhookFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  // Ref para evitar reload do Realtime enquanto edita o card aberto
+  const editingCardIdRef = useRef<number | null>(null);
+
+  const normalizeStatus = (value?: string | null) => (value || '').trim().toLowerCase().replace(/-/g, '_');
+  const parseDbDateToMillis = (value?: string | null): number => {
+    if (!value) return NaN;
+    const direct = new Date(value).getTime();
+    if (!Number.isNaN(direct)) return direct;
+    const normalized = value.replace(' ', 'T').replace(/\+00$/, 'Z');
+    return new Date(normalized).getTime();
+  };
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchTerm.trim().toLowerCase()), 350);
@@ -105,57 +117,87 @@ const RecrutadoraPage: React.FC = () => {
     return 'ml-2 text-xs font-semibold px-2 py-0.5 rounded-full border border-border-secondary bg-bg-secondary text-text-secondary';
   };
 
-  useEffect(() => {
-    const load = async () => {
-      if (!selectedUnit) return;
-      setLoading(true);
-      setError(null);
-      try {
-        // Buscar URL da recrutadora do unit_keys (apenas para unidade única, não ALL)
-        if ((selectedUnit as any).id !== 'ALL') {
-          const { data: unitKeyData } = await supabase
-            .from('unit_keys')
-            .select('recrutadora')
-            .eq('unit_id', selectedUnit.id)
-            .eq('is_active', true)
-            .limit(1)
-            .maybeSingle();
+  const loadBoardData = useCallback(async () => {
+    if (!selectedUnit) return;
+    setLoading(true);
+    setError(null);
+    try {
+      // Buscar URL da recrutadora do unit_keys (apenas para unidade única, não ALL)
+      if ((selectedUnit as any).id !== 'ALL') {
+        const { data: unitKeyData } = await supabase
+          .from('unit_keys')
+          .select('recrutadora')
+          .eq('unit_id', selectedUnit.id)
+          .eq('is_active', true)
+          .limit(1)
+          .maybeSingle();
 
-          setRecrutadoraUrl(unitKeyData?.recrutadora || null);
-        } else {
-          setRecrutadoraUrl(null);
-        }
+        setRecrutadoraUrl(unitKeyData?.recrutadora || null);
+      } else {
+        setRecrutadoraUrl(null);
+      }
 
-        // Colunas são globais; cards variam por unidade
-        const cols = await fetchColumns(selectedUnit.id as any);
-        setColumns(cols);
-        // Quando ALL, agrega cards de todas as unidades do usuário
-        if ((selectedUnit as any).id === 'ALL') {
-          if (!userUnits || userUnits.length === 0) {
-            setCards([]);
-            setMetrics({ today: 0, week: 0, month: 0 });
-          } else {
-            const ids = userUnits.map(u => u.id);
-            const { fetchCardsForUnits } = await import('../../services/recrutadora/recrutadora.service');
-            const crdsAll = await fetchCardsForUnits(ids);
-            setCards(crdsAll);
-            const m = await fetchRecrutadoraMetricsForUnits(ids);
-            setMetrics(m);
-          }
+      // Colunas são globais; cards variam por unidade
+      const cols = await fetchColumns(selectedUnit.id as any);
+      setColumns(cols);
+      // Quando ALL, agrega cards de todas as unidades do usuário
+      if ((selectedUnit as any).id === 'ALL') {
+        if (!userUnits || userUnits.length === 0) {
+          setCards([]);
+          setMetrics({ today: 0, week: 0, month: 0 });
         } else {
-          const crds = await fetchCards(selectedUnit.id as string);
-          setCards(crds);
-          const m = await fetchRecrutadoraMetrics(selectedUnit.id as string);
+          const ids = userUnits.map(u => u.id);
+          const { fetchCardsForUnits } = await import('../../services/recrutadora/recrutadora.service');
+          const crdsAll = await fetchCardsForUnits(ids);
+          setCards(crdsAll);
+          const m = await fetchRecrutadoraMetricsForUnits(ids);
           setMetrics(m);
         }
-      } catch (e: any) {
-        setError(e.message || 'Falha ao carregar o Kanban.');
-      } finally {
-        setLoading(false);
+      } else {
+        const crds = await fetchCards(selectedUnit.id as string);
+        setCards(crds);
+        const m = await fetchRecrutadoraMetrics(selectedUnit.id as string);
+        setMetrics(m);
       }
-    };
-    load();
+    } catch (e: any) {
+      setError(e.message || 'Falha ao carregar o Kanban.');
+    } finally {
+      setLoading(false);
+    }
   }, [selectedUnit, userUnits]);
+
+  useEffect(() => {
+    loadBoardData();
+  }, [loadBoardData]);
+
+  const realtimeFilterQuery = useMemo(() => {
+    if (!selectedUnit) return undefined;
+    if ((selectedUnit as any).id === 'ALL') {
+      if (!userUnits || userUnits.length === 0) return undefined;
+      return `unit_id=in.(${userUnits.map(u => u.id).join(',')})`;
+    }
+    return `unit_id=eq.${selectedUnit.id}`;
+  }, [selectedUnit, userUnits]);
+
+  // Sincroniza ref do Realtime com o card em edição
+  useEffect(() => {
+    editingCardIdRef.current = editingCard?.id ?? null;
+  }, [editingCard]);
+
+  useRealtimeSubscription({
+    table: 'recrutadora',
+    filterQuery: realtimeFilterQuery,
+    callbacks: {
+      onInsert: () => { void loadBoardData(); },
+      onUpdate: (updatedRecord: any) => {
+        // Ignora evento se for o próprio card sendo editado (auto-save)
+        if (editingCardIdRef.current === updatedRecord.id) return;
+        void loadBoardData();
+      },
+      onDelete: () => { void loadBoardData(); },
+    },
+    enabled: !!selectedUnit,
+  });
 
   const isAllUnits = (selectedUnit as any)?.id === 'ALL';
 
@@ -169,7 +211,7 @@ const RecrutadoraPage: React.FC = () => {
       else startISO = startOfMonthISO();
       const start = new Date(startISO).getTime();
       base = base.filter(c => {
-        const created = new Date(c.created_at).getTime();
+        const created = parseDbDateToMillis(c.created_at);
         return !isNaN(created) && created >= start;
       });
     }
@@ -186,8 +228,9 @@ const RecrutadoraPage: React.FC = () => {
   const cardsByStatus = useMemo(() => {
     const map: Record<string, RecrutadoraCard[]> = {};
     for (const c of visibleCards) {
-      if (!map[c.status]) map[c.status] = [];
-      map[c.status].push(c);
+      const key = normalizeStatus(c.status);
+      if (!map[key]) map[key] = [];
+      map[key].push(c);
     }
     // garantir ordenação local por position
     for (const k of Object.keys(map)) {
@@ -624,10 +667,11 @@ const RecrutadoraPage: React.FC = () => {
             <div className="flex-1 min-h-0 overflow-x-auto pb-2 pr-1">
               <div className="inline-flex gap-4 h-full">
                 {renderColumns.map((col: any) => {
-                  const droppableId = col._unitForQual ? `qualificadas|${col._unitForQual.id}` : col.code;
+                  const columnCode = normalizeStatus(col.code);
+                  const droppableId = col._unitForQual ? `qualificadas|${col._unitForQual.id}` : columnCode;
                   const columnCards = col._unitForQual
-                    ? visibleCards.filter(c => c.status === 'qualificadas' && c.unit_id === col._unitForQual.id)
-                    : (cardsByStatus[col.code] || []);
+                    ? visibleCards.filter(c => normalizeStatus(c.status) === 'qualificadas' && c.unit_id === col._unitForQual.id)
+                    : (cardsByStatus[columnCode] || []);
                   return (
                     <div key={col.id} className="bg-bg-tertiary rounded-lg border border-border-secondary flex flex-col h-full w-[320px] min-w-[320px] shrink-0">
                       <div className="p-0 h-[100px] md:h-[120px] rounded-t-lg border-b border-border-secondary relative overflow-hidden" style={{ backgroundColor: col.color || undefined }}>
@@ -644,7 +688,7 @@ const RecrutadoraPage: React.FC = () => {
                           </div>
                         )}
                         <span className={`absolute top-1 right-1 z-10 ${getBadgeClasses(col.color)}`}>
-                          {col._unitForQual ? columnCards.length : (cardsByStatus[col.code] || []).length}
+                          {col._unitForQual ? columnCards.length : (cardsByStatus[columnCode] || []).length}
                         </span>
                       </div>
                       <Droppable droppableId={droppableId}>
