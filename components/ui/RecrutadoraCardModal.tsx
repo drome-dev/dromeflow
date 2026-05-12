@@ -288,8 +288,8 @@ const RecrutadoraCardModal: React.FC<Props> = ({
       await onUpdate(initialCard.id, { observacao });
       prevObservacaoRef.current = observacao;
       setAutoSaveObsMsg('Observação salva');
-      // Notifica o pai para atualizar o Kanban (que mostra a primeira linha da obs)
-      onSaved();
+      // Notifica o pai para atualizar o Kanban (que mostra a primeira linha da obs) apenas se não estiver em modo de edição manual
+      if (!editMode) onSaved();
       setTimeout(() => setAutoSaveObsMsg(null), 2000);
     } catch (e) {
       // feedback discreto sem bloquear o usuário
@@ -311,8 +311,8 @@ const RecrutadoraCardModal: React.FC<Props> = ({
     try {
       await onUpdate(initialCard.id, { status: (newStatus || null) as any });
       setAutoSaveStatusMsg('Status salvo');
-      // Notifica o pai para recarregar (mover coluna no Kanban, etc.)
-      onSaved();
+      // Notifica o pai para recarregar (mover coluna no Kanban, etc.) apenas se não estiver em modo de edição manual
+      if (!editMode) onSaved();
       setTimeout(() => setAutoSaveStatusMsg(null), 2000);
     } catch (e) {
       setAutoSaveStatusMsg('Falha ao salvar status');
