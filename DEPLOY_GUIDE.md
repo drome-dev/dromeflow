@@ -3,7 +3,7 @@
 ## 📦 Pré-requisitos
 
 - ✅ Node.js disponível em `/opt/homebrew/bin/node`
-- ✅ Arquivo `.env.local` configurado com as credenciais SFTP
+- ✅ Arquivo `.env.local` configurado com as credenciais SFTP do deploy principal
 - ✅ Dependências instaladas (`npm install`)
 
 ---
@@ -13,17 +13,20 @@
 Crie o arquivo `.env.local` na raiz do projeto com base no `.env.example`:
 
 ```env
-# Supabase
-VITE_SUPABASE_URL=https://uframhbsgtxckdxttofo.supabase.co
+# Ambiente local / criação
+VITE_SUPABASE_URL=https://xivgioxraznqshlbgxdj.supabase.co
 VITE_SUPABASE_ANON_KEY=<sua-chave-anon>
 
-# SFTP — Hostinger SSH (porta 65002)
+# Deploy principal via SFTP
 SFTP_HOST=72.61.220.147
 SFTP_PORT=65002
 SFTP_USER=u854441981
 SFTP_DEST=domains/dromeflow.com/public_html
 SFTP_PASSWORD=<sua-senha>
 ```
+
+> `.env.local` é o arquivo de trabalho do desenvolvimento local e também o arquivo lido por `scripts/deploy.js`.
+> A validação com dados reais deve ficar em `.env.dev`, e o ambiente principal dos clientes em `.env.production`.
 
 > ⚠️ **Nunca commite o `.env.local`.** Ele já está no `.gitignore`.
 

@@ -415,6 +415,14 @@ Troubleshooting
 ---
 ## 2. Configuração de Ambiente
 
+O projeto usa três arquivos de ambiente com papéis diferentes:
+
+| Arquivo | Uso | Projeto Supabase |
+|---|---|---|
+| `.env.local` | testes e criação local | `xivgioxraznqshlbgxdj` |
+| `.env.dev` | testes com dados reais | `uframhbsgtxckdxttofo` |
+| `.env.production` | sistema principal dos clientes | `uframhbsgtxckdxttofo` |
+
 Crie `.env.local` na raiz com as seguintes variáveis:
 
 ```bash
@@ -425,6 +433,7 @@ VITE_SUPABASE_ANON_KEY=SUA_CHAVE_ANON
 
 **Observações:**
 - O cliente Supabase é inicializado em `services/supabaseClient.ts` usando `import.meta.env.VITE_SUPABASE_*`
+- `scripts/deploy.js` lê `.env.local` para as credenciais de deploy principal, enquanto `scripts/deploy-dev.js` lê `.env.dev`
 - Todas as tabelas estão consolidadas no banco DromeFlow (incluindo `actions`, `activity_logs`, `error_logs`)
 - **Cloudflare removido**: Anteriormente o projeto usava Cloudflare R2/D1 para storage. Essa integração foi completamente removida. Cloudflare agora é usado apenas como CDN/DNS/Proxy.
 

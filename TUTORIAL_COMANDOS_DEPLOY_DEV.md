@@ -2,6 +2,12 @@
 
 Guia rápido para desenvolvimento e deploy no ambiente `dev.dromeflow.com`.
 
+Neste fluxo:
+
+- `.env.local` fica para testes e criação local
+- `.env.dev` fica para validação com dados reais
+- `.env.production` fica para o sistema principal dos clientes
+
 ## 1) Rodar local
 
 ```bash
