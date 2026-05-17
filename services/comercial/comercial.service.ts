@@ -10,7 +10,7 @@ import { startOfTodayISO, startOfWeekISO, startOfMonthISO } from '../utils/dates
 
 export type ComercialPeriodMetrics = { today: number; week: number; month: number };
 
-const COMERCIAL_SELECT = 'id, unit_id, nome, tipo, endereco, contato, origem, status, observacao, created_at, updated_at, position';
+const COMERCIAL_SELECT = 'id, unit_id, nome, tipo, endereco, contato, contato_id, origem, tag, status, observacao, created_at, updated_at, position';
 
 export const fetchComercialColumns = async (unitId: string | null): Promise<ComercialColumn[]> => {
   let query = supabase
@@ -64,9 +64,10 @@ export const fetchComercialCardsForUnits = async (unitIds: string[]): Promise<Co
   return (data as ComercialCard[]) || [];
 };
 
-export const createComercialCard = async (payload: Partial<ComercialCard>) => {
-  const { error } = await supabase.from('comercial').insert(payload);
+export const createComercialCard = async (payload: Partial<ComercialCard>): Promise<ComercialCard> => {
+  const { data, error } = await supabase.from('comercial').insert(payload).select().single();
   if (error) throw error;
+  return data as ComercialCard;
 };
 
 export const updateComercialCard = async (id: string, payload: Partial<ComercialCard>) => {
@@ -205,4 +206,32 @@ export const fetchComercialMetricsForUnits = async (unitIds: string[]): Promise<
   if (e3) throw e3;
 
   return { today: today || 0, week: week || 0, month: month || 0 };
+};
+
+export const triggerComercialWebhook = async (action: string, data: Record<string, unknown>) => {
+  try {
+    const { data: moduleData, error } = await supabase
+      .from('modules')
+      .select('webhook_url')
+      .eq('code', 'comercial')
+      .maybeSingle();
+
+    if (error) throw error;
+    if (!moduleData?.webhook_url) {
+      console.warn('[ComercialWebhook] Nenhum webhook_url configurado para o módulo comercial');
+      return;
+    }
+
+    const response = await fetch(moduleData.webhook_url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, data }),
+    });
+
+    if (!response.ok) {
+      console.error(`[ComercialWebhook] Falha (${response.status}):`, await response.text());
+    }
+  } catch (err) {
+    console.error('[ComercialWebhook] Erro ao disparar webhook:', err);
+  }
 };

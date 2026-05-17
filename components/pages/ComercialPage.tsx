@@ -197,7 +197,15 @@ const ComercialPage: React.FC = () => {
     }
     const unitTarget = payload.unit_id as string;
     const countInStatus = cards.filter(card => card.status === targetStatus && card.unit_id === unitTarget).length;
-    await createComercialCard({ ...payload, position: countInStatus + 1 });
+    const created = await createComercialCard({ ...payload, position: countInStatus + 1 });
+
+    try {
+      const { triggerComercialWebhook } = await import('../../services/comercial/comercial.service');
+      triggerComercialWebhook('novo', {
+        ...created,
+        unidade_nome: selectedUnit && 'unit_name' in selectedUnit ? selectedUnit.unit_name : '',
+      });
+    } catch { /* não bloqueia */ }
   };
 
   const handleUpdateCard = async (id: string, payload: Partial<ComercialCard>) => {
@@ -266,6 +274,27 @@ const ComercialPage: React.FC = () => {
 
       if (updates.length) {
         await persistStatusOrdering(updates);
+
+        // Webhooks para cards que mudaram de status
+        const statusChanges = updates.filter(u => {
+          const original = originalMap.get(u.id);
+          return original && original.status !== u.status;
+        });
+
+        if (statusChanges.length) {
+          try {
+            const { triggerComercialWebhook } = await import('../../services/comercial/comercial.service');
+            for (const change of statusChanges) {
+              const original = originalMap.get(change.id);
+              triggerComercialWebhook('status', {
+                id: change.id,
+                status: change.status,
+                status_anterior: original?.status,
+                status_novo: change.status,
+              });
+            }
+          } catch { /* não bloqueia */ }
+        }
       }
 
       if (isAllUnits) {

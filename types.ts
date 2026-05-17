@@ -336,10 +336,12 @@ export interface ComercialCard {
   id: string;
   unit_id: string;
   nome: string;
-  tipo: string | null; // Campo texto livre (não mais enum)
+  tipo: string | null;
   endereco: string | null;
   contato: string | null;
-  origem: string | null; // Nova coluna para rastreamento de origem
+  contato_id: string | null;
+  origem: string | null;
+  tag: string | null;
   status: string;
   observacao: string | null;
   created_at: string;
