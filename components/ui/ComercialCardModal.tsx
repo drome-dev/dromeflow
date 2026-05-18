@@ -81,22 +81,20 @@ const ComercialCardModal: React.FC<Props> = ({
 
     if (initialCard && onUpdate) {
       try {
-        // Save silently without triggering full reload
         await onUpdate(initialCard.id, { status: newStatus });
 
-        // Webhook de mudança de status
-        try {
-          const { triggerComercialWebhook } = await import('../../services/comercial/comercial.service');
-          triggerComercialWebhook('status', {
-            ...initialCard,
-            status: newStatus,
-            status_anterior: oldStatus,
-            status_novo: newStatus,
-          });
-        } catch { /* não bloqueia */ }
+        if (newStatus === 'ganhos' || newStatus === 'perdidos') {
+          try {
+            const { triggerComercialWebhook } = await import('../../services/comercial/comercial.service');
+            const action = newStatus === 'ganhos' ? 'ganho' : 'perdido';
+            triggerComercialWebhook(action, {
+              ...initialCard,
+              status: newStatus,
+            });
+          } catch { /* não bloqueia */ }
+        }
       } catch (e: any) {
         setError(e.message || 'Falha ao atualizar o status.');
-        // Revert status on error
         setStatus(oldStatus);
       }
     }

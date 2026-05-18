@@ -275,23 +275,21 @@ const ComercialPage: React.FC = () => {
       if (updates.length) {
         await persistStatusOrdering(updates);
 
-        // Webhooks para cards que mudaram de status
+        // Webhooks apenas para status ganhos/perdidos
         const statusChanges = updates.filter(u => {
           const original = originalMap.get(u.id);
-          return original && original.status !== u.status;
+          return original && original.status !== u.status && (u.status === 'ganhos' || u.status === 'perdidos');
         });
 
         if (statusChanges.length) {
           try {
             const { triggerComercialWebhook } = await import('../../services/comercial/comercial.service');
             for (const change of statusChanges) {
-              const original = originalMap.get(change.id);
-              triggerComercialWebhook('status', {
-                id: change.id,
-                status: change.status,
-                status_anterior: original?.status,
-                status_novo: change.status,
-              });
+              const card = nextCards.find(c => c.id === change.id);
+              if (card) {
+                const action = change.status === 'ganhos' ? 'ganho' : 'perdido';
+                triggerComercialWebhook(action, card);
+              }
             }
           } catch { /* não bloqueia */ }
         }
