@@ -301,7 +301,7 @@ const ComercialCardModal: React.FC<Props> = ({
                   <option value="">Selecione...</option>
                   <option value="Residencial">Residencial</option>
                   <option value="Comercial">Comercial</option>
-                  <option value="Pós-Obra">Pós-Obra</option>
+                  <option value="Pós Obra">Pós-Obra</option>
                 </select>
               </label>
 
