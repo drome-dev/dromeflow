@@ -144,7 +144,8 @@ export const getAtendimentoById = async (atendimentoId: string): Promise<Atendim
     .from('processed_data')
     .select('atendimento_id, cliente, data, servico, endereco, profissional')
     .eq('atendimento_id', atendimentoId)
-    .single();
+    .limit(1)
+    .maybeSingle();
 
   if (error) {
     console.error('Erro ao buscar atendimento:', error);

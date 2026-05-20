@@ -99,7 +99,8 @@ export const fetchDataRecordById = async (id: string): Promise<DataRecord | null
     .from('processed_data')
     .select('*')
     .eq('atendimento_id', id)
-    .single();
+    .limit(1)
+    .maybeSingle();
 
   if (dataByAtendimentoId) {
     record = dataByAtendimentoId;

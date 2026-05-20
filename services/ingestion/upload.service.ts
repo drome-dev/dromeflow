@@ -144,21 +144,28 @@ const applyWaitStatusByOrder = (records: DataRecord[]): DataRecord[] => {
 	return records;
 };
 
-// Remove registros obsoletos usando 'ATENDIMENTO_ID' base como chave lógica
-// Extrai a base do ATENDIMENTO_ID (remove sufixos _1, _2 dos derivados)
-// Remove TODOS os registros (original + derivados) quando o ID base não está mais no arquivo
+// Extrai o ID base do ATENDIMENTO_ID (remove sufixos _1, _2, _3...)
+const baseFromAtendimento = (atendId: any): string => {
+	const str = String(atendId || '').trim();
+	const match = str.match(/^(.+)_(\d+)$/);
+	return match ? match[1] : str;
+};
+
+// Remove registros obsoletos usando base ID + cliente como chave lógica
+// Agora usa Map<base_id, Set<cliente>> para comparar cliente a cliente,
+// permitindo que diferentes clientes compartilhem o mesmo atendimento_id base
 const removeObsoleteRecords = async (
 	unitCode: string,
 	startDate: string,
 	endDate: string,
-	baseAtendimentosInFile: Set<string>
+	clientesPorBaseNoFile: Map<string, Set<string>>
 ): Promise<number> => {
 	console.log('[removeObsoleteRecords] Checking for obsolete records in range:', startDate, 'to', endDate);
-	console.log('[removeObsoleteRecords] Base IDs in file:', baseAtendimentosInFile.size);
+	console.log('[removeObsoleteRecords] Unique base IDs in file:', clientesPorBaseNoFile.size);
 
 	const { data: existingRecords, error: fetchError } = await supabase
 		.from('processed_data')
-		.select('atendimento_id, is_divisao')
+		.select('atendimento_id, cliente, is_divisao')
 		.eq('unidade_code', unitCode)
 		.gte('data', startDate)
 		.lte('data', endDate);
@@ -174,16 +181,8 @@ const removeObsoleteRecords = async (
 
 	console.log('[removeObsoleteRecords] Found', existingRecords.length, 'existing records in database');
 
-	// Extrai o ID base do ATENDIMENTO_ID (remove sufixos _1, _2, _3...)
-	const baseFromAtendimento = (atendId: any): string => {
-		const str = String(atendId || '').trim();
-		// Match pattern: anything followed by underscore and digits (e.g., "12345_1" -> "12345")
-		const match = str.match(/^(.+)_(\d+)$/);
-		return match ? match[1] : str;
-	};
-
-	// Build map of base IDs to all their ATENDIMENTO_IDs (original + derivados)
-	const baseToAtendimentosMap = new Map<string, string[]>();
+	// Build map of base IDs to all their DB records (atendimento_id + cliente)
+	const baseToDbRecordsMap = new Map<string, { atendimento_id: string; cliente: string }[]>();
 
 	existingRecords.forEach((r: any) => {
 		const atendimentoId = String(r.atendimento_id || '').trim();
@@ -191,41 +190,43 @@ const removeObsoleteRecords = async (
 
 		const base = baseFromAtendimento(atendimentoId);
 
-		if (!baseToAtendimentosMap.has(base)) {
-			baseToAtendimentosMap.set(base, []);
+		if (!baseToDbRecordsMap.has(base)) {
+			baseToDbRecordsMap.set(base, []);
 		}
-		baseToAtendimentosMap.get(base)!.push(atendimentoId);
+		baseToDbRecordsMap.get(base)!.push({
+			atendimento_id: atendimentoId,
+			cliente: String(r.cliente || '').trim(),
+		});
 	});
 
-	console.log('[removeObsoleteRecords] Unique base IDs in database:', baseToAtendimentosMap.size);
+	console.log('[removeObsoleteRecords] Unique base IDs in database:', baseToDbRecordsMap.size);
 
-	// Find base IDs that exist in DB but NOT in the uploaded file
-	const basesToRemove: string[] = [];
-	baseToAtendimentosMap.forEach((atendimentos, base) => {
-		if (!baseAtendimentosInFile.has(base)) {
-			basesToRemove.push(base);
+	// Find records that exist in DB but NOT in the uploaded file
+	// For each base ID: if base not in file at all → delete all records
+	//                   if base in file → delete only records whose cliente is not in file
+	const atendimentosToRemove: string[] = [];
+	baseToDbRecordsMap.forEach((dbRecords, base) => {
+		const clientesNoFile = clientesPorBaseNoFile.get(base);
+		if (!clientesNoFile) {
+			// Base inteira removida do arquivo — deleta todos os registros
+			dbRecords.forEach((rec) => atendimentosToRemove.push(rec.atendimento_id));
+		} else {
+			// Base existe — deleta só os clientes que não estão mais no arquivo
+			dbRecords.forEach((rec) => {
+				if (!clientesNoFile.has(rec.cliente)) {
+					atendimentosToRemove.push(rec.atendimento_id);
+				}
+			});
 		}
 	});
 
-	if (basesToRemove.length === 0) {
+	if (atendimentosToRemove.length === 0) {
 		console.log('[removeObsoleteRecords] No obsolete records to remove');
 		return 0;
 	}
 
-	console.log('[removeObsoleteRecords] Found', basesToRemove.length, 'obsolete base IDs:', basesToRemove.slice(0, 5), '...');
+	console.log('[removeObsoleteRecords] Total records to delete:', atendimentosToRemove.length);
 
-	// Collect ALL ATENDIMENTO_IDs to remove (original + all derivados)
-	const atendimentosToRemove: string[] = [];
-	basesToRemove.forEach((base) => {
-		const ids = baseToAtendimentosMap.get(base) || [];
-		atendimentosToRemove.push(...ids);
-	});
-
-	console.log('[removeObsoleteRecords] Total records to delete (including derivados):', atendimentosToRemove.length);
-
-	if (atendimentosToRemove.length === 0) return 0;
-
-	// Delete all records (original + derivados) in one operation
 	const { error: deleteError, count } = await supabase
 		.from('processed_data')
 		.delete({ count: 'exact' })
@@ -276,12 +277,18 @@ export const uploadXlsxData = async (
 	});
 
 	if (minDate && maxDate) {
-		const baseAtendimentosInFile = new Set(
-			processedRecords.filter((r) => r.is_divisao === 'NAO').map((r) => r.atendimento_id).filter(Boolean)
-		);
+		const clientesPorBaseNoFile = new Map<string, Set<string>>();
+		processedRecords
+			.filter((r) => r.is_divisao === 'NAO')
+			.forEach((r) => {
+				if (!r.atendimento_id) return;
+				const base = baseFromAtendimento(String(r.atendimento_id));
+				if (!clientesPorBaseNoFile.has(base)) clientesPorBaseNoFile.set(base, new Set());
+				if (r.cliente) clientesPorBaseNoFile.get(base)!.add(r.cliente);
+			});
 		const startDate = minDate.toISOString().split('T')[0];
 		const endDate = maxDate.toISOString().split('T')[0];
-		deletedCount = await removeObsoleteRecords(unitCode, startDate, endDate, baseAtendimentosInFile);
+		deletedCount = await removeObsoleteRecords(unitCode, startDate, endDate, clientesPorBaseNoFile);
 	}
 
 	const sanitizeRecord = (r: any) => {
@@ -325,18 +332,19 @@ export const uploadXlsxData = async (
 			const endDate = maxDate.toISOString().split('T')[0];
 			const { data: existing } = await supabase
 				.from('processed_data')
-				.select('id, atendimento_id')
+				.select('id, atendimento_id, cliente')
 				.eq('unidade_code', unitCode)
 				.gte('data', startDate)
 				.lte('data', endDate);
 			(existing || []).forEach((r: any) => {
-				if (r.atendimento_id) existingMap.set(r.atendimento_id, { id: r.id });
+				if (r.atendimento_id) existingMap.set(`${r.atendimento_id}|${r.cliente || ''}`, { id: r.id });
 			});
 		}
 		const toInsert: any[] = [];
 		const toUpdate: any[] = [];
 		processedRecords.forEach((r) => {
-			if (r.atendimento_id && existingMap.has(r.atendimento_id)) toUpdate.push(r);
+			const key = `${r.atendimento_id}|${r.cliente || ''}`;
+			if (r.atendimento_id && existingMap.has(key)) toUpdate.push(r);
 			else toInsert.push(r);
 		});
 		let inserted = 0,
