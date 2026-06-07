@@ -445,6 +445,13 @@ npm install
 npm run dev
 ```
 
+## Desenvolvimento local (exposição de rede)
+
+- `npm run dev` → servidor somente acessível via **localhost** – útil para testes rápidos de UI.
+- `npm run dev:local` → levanta o Vite com `--host 0.0.0.0`, expondo a aplicação na rede (ex.: `http://192.168.x.x:5173`). Esse script lê o arquivo `.env.local`, que contém as credenciais do Supabase **local** (`xivgioxraznqshlbgxdj`) e as configurações de FTP de desenvolvimento. **Use este comando** como ponto de partida antes de qualquer `deploy:dev` ou `deploy:prod`.
+
+Note: Vite may emit a deprecation warning from Tailwind (`module.register`). This warning is harmless and will be fixed in a future Tailwind release.
+
 Build produção:
 
 ```bash

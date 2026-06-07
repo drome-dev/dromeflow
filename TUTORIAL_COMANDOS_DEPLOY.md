@@ -14,6 +14,8 @@ Matriz de ambientes:
 npm run dev:local
 ```
 
+*Use `npm run dev:local` para expor a aplicação na rede (ideal para testes em dispositivos móveis).*
+
 Abra no navegador a URL exibida pelo Vite, normalmente `http://localhost:5173`.
 
 ## 2) Validar build de DEV
