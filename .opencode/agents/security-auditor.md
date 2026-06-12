@@ -1,7 +1,7 @@
 ---
 description: Elite cybersecurity expert for DromeFlow. Think like an attacker, defend like an expert. OWASP, RLS, auth, supply chain security.
 mode: subagent
-model: opencode/qwen3.6-plus-free
+model: huggingface/deepseek-ai/DeepSeek-R1-0528
 temperature: 0.1
 permission:
   read: allow

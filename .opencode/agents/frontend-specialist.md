@@ -1,7 +1,7 @@
 ---
 description: Senior Frontend Architect for React/TypeScript systems. Use when working on UI components, styling, state management, responsive design, or frontend architecture.
 mode: subagent
-model: opencode/qwen3.6-plus-free
+model: nvidia/meta/llama-3.2-90b-vision-instruct
 temperature: 0.1
 permission:
   read: allow

@@ -1,4 +1,4 @@
-import React, { createContext, useState, useContext, ReactNode, useEffect } from 'react';
+import React, { createContext, useState, useContext, ReactNode, useEffect, useRef } from 'react';
 import { Unit, Module, PageView } from '../types';
 import { useAuth } from './AuthContext';
 import { createLogger } from '../services/utils/log';
@@ -23,8 +23,7 @@ export const AppContextProvider: React.FC<{ children: ReactNode }> = ({ children
   // Inicializa como 'welcome' temporariamente até carregar módulos
   const [activeView, setActiveView] = useState<PageView>('welcome');
   const [activeModule, setActiveModule] = useState<Module | null>(null);
-  const [hasInitialized, setHasInitialized] = useState(false);
-  const [isFirstLoad, setIsFirstLoad] = useState(true);
+  const previousUnitId = useRef<string | null>(null);
   
   // Resolve qual view deve ser exibida para um determinado módulo
   const resolveTargetView = (module: Module): { view: PageView, mod: Module | null } => {
@@ -148,7 +147,6 @@ export const AppContextProvider: React.FC<{ children: ReactNode }> = ({ children
       if (unit && unit.id) {
         log.info('[AppContext] Evento de mudança de unidade recebido', { unit });
         setSelectedUnit(unit);
-        setHasInitialized(false); // Reset para recarregar módulos
       }
     };
 
@@ -158,10 +156,19 @@ export const AppContextProvider: React.FC<{ children: ReactNode }> = ({ children
     };
   }, []);
 
-  // Carrega o primeiro módulo disponível para a unidade selecionada
+  // Carrega módulos quando a unidade muda (inicial ou manual)
   useEffect(() => {
     const loadFirstModuleForUnit = async () => {
-      if (loading || !selectedUnit || hasInitialized) return;
+      if (loading || !selectedUnit) return;
+
+      const currentUnitId = (selectedUnit as any).id === 'ALL' ? 'ALL' : (selectedUnit as Unit)?.id;
+      if (!currentUnitId) return;
+
+      // Só prossegue se a unidade realmente mudou
+      if (previousUnitId.current === currentUnitId) return;
+      previousUnitId.current = currentUnitId;
+
+      log.info('[AppContext] Unidade mudou para: ' + currentUnitId);
 
       try {
         // Busca módulos para a unidade selecionada
@@ -181,8 +188,6 @@ export const AppContextProvider: React.FC<{ children: ReactNode }> = ({ children
               const { view, mod } = resolveTargetView(foundModule);
               setActiveView(view);
               setActiveModule(mod);
-              setHasInitialized(true);
-              setIsFirstLoad(false);
               return;
             } else {
               // Pode ser uma view interna direto na URL (ex: /dashboard)
@@ -192,8 +197,6 @@ export const AppContextProvider: React.FC<{ children: ReactNode }> = ({ children
               if (foundByViewId) {
                 setActiveView(internalView as PageView);
                 setActiveModule(foundByViewId);
-                setHasInitialized(true);
-                setIsFirstLoad(false);
                 return;
               }
             }
@@ -206,17 +209,13 @@ export const AppContextProvider: React.FC<{ children: ReactNode }> = ({ children
               const { view, mod } = resolveTargetView(foundModule);
               setActiveView(view);
               setActiveModule(mod);
-              setHasInitialized(true);
-              setIsFirstLoad(false);
               return;
             }
           }
 
-          // Se há view no localStorage e não é módulo, restaura (ex: dashboard, data)
+          // 3. Se há view no localStorage e não é módulo, restaura (ex: dashboard, data)
           if (storedView && storedView !== 'module') {
             setView(storedView);
-            setHasInitialized(true);
-            setIsFirstLoad(false);
             return;
           }
 
@@ -230,60 +229,19 @@ export const AppContextProvider: React.FC<{ children: ReactNode }> = ({ children
           } else {
             setView('welcome');
           }
-          setHasInitialized(true);
-          setIsFirstLoad(false);
         } else {
           // Se não há módulos ativos na unidade, vai para welcome
           log.info('[AppContext] Nenhum módulo ativo para unidade', { unit: selectedUnit });
           setView('welcome');
-          setHasInitialized(true);
-          setIsFirstLoad(false);
         }
       } catch (err) {
         log.error('[AppContext] Erro ao carregar módulos da unidade', { error: err });
         setView('welcome');
-        setHasInitialized(true);
-        setIsFirstLoad(false);
       }
     };
 
     loadFirstModuleForUnit();
-  }, [loading, selectedUnit, hasInitialized, getModulesForUnit]);
-
-  // Quando mudar de unidade (após inicialização MANUAL), recarrega o primeiro módulo
-  useEffect(() => {
-    // Se for a primeira carga ou estiver carregando, não sobrescreve a restauração
-    if (!hasInitialized || loading || isFirstLoad) return;
-
-    const reloadFirstModuleForUnit = async () => {
-      if (!selectedUnit) return;
-
-      try {
-        const modulesForUnit = await getModulesForUnit(selectedUnit.id);
-        const activeModulesForUnit = modulesForUnit.filter(m => m.is_active);
-
-        if (activeModulesForUnit.length > 0) {
-          const bestModule = findBestInitialModule(activeModulesForUnit);
-          if (bestModule) {
-            log.info('[AppContext] Mudança de unidade - carregando melhor módulo: ' + bestModule.name);
-            const { view, mod } = resolveTargetView(bestModule);
-            setActiveView(view);
-            setActiveModule(mod);
-          } else {
-            setView('welcome');
-          }
-        } else {
-          log.info('[AppContext] Unidade sem módulos ativos');
-          setView('welcome');
-        }
-      } catch (err) {
-        log.error('[AppContext] Erro ao recarregar módulos da unidade', { error: err });
-      }
-    };
-
-    reloadFirstModuleForUnit();
-  }, [selectedUnit?.id, hasInitialized, isFirstLoad]);
- // Observa apenas mudanças no ID da unidade
+  }, [loading, selectedUnit?.id, getModulesForUnit]);
 
   return (
     <AppContext.Provider value={{ selectedUnit, setSelectedUnit, activeView, activeModule, setView }}>

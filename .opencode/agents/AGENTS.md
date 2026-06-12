@@ -1,85 +1,82 @@
 # DromeFlow — AI Agent Instructions
 
-SaaS de gestão para franquias de limpeza. React 19 + TypeScript + Vite + Supabase + Tailwind CSS 4.
+## 📋 Contexto do Projeto
 
-## Architecture
+- **Stack**: React 19 + TypeScript + Vite 6.2 + Supabase + Tailwind CSS 4
+- **Roteamento**: Sem React Router. Controle via `AppContext.activeView` em `ContentArea.tsx`. Navegação: `setView('nome-da-view')`
+- **Autenticação**: Custom (sem `supabase.auth`). Consulta direta na tabela `profiles` (senha em texto puro, MVP). Sessão em `localStorage`
+- **Permissões**: Baseada em unidades
+  - `super_admin` → apenas módulos com `'super_admin'` em `allowed_profiles`
+  - `admin` → todos os `unit_modules` da unidade
+  - `user` → interseção `user_modules ∩ unit_modules`
+- **Rotas públicas**: `cadastro.*`, `landpage.*`, `onboarding.*`, `agenda.*` (tratadas no `App.tsx` antes do `AuthProvider`)
+- **Alias**: `@/*` → raiz do projeto
+- **Wrappers**: `<React.StrictMode>` + `@tanstack/react-query` no `index.tsx`
 
-- **No React Router**: `AppContext.activeView` controls rendering, `ContentArea.tsx` switches on `activeView`. Pages are lazy-loaded. Navigation via `setView('dashboard')`.
-- **Custom auth** (no `supabase.auth`): login queries `profiles` table directly (plain text password, MVP). Session persisted in `localStorage`.
-- **Permission hierarchy** (unit-based access control):
-  - `super_admin` → only modules with `'super_admin'` in `allowed_profiles`
-  - `admin` → ALL unit_modules for the unit
-  - `user` → intersection of `user_modules ∩ unit_modules`
-- **Public subdomain routes** handled at App.tsx before AuthProvider: `cadastro.*`, `landpage.*`, `onboarding.*`, `agenda.*`.
-- `@/*` path alias maps to root (`./*`).
-- `<React.StrictMode>` + `@tanstack/react-query` wrapper in `index.tsx`.
+## 🧠 Diretrizes de Comportamento (OBRIGATÓRIAS)
 
-## Commands
+1. **Pensar antes de codar**
+   - Declare suposições explicitamente. Na dúvida, pergunte.
+   - Se houver múltiplas interpretações, liste-as (não escolha em silêncio).
+   - Se uma solução mais simples existir, sugira-a. Recue quando necessário.
+   - Se algo não estiver claro, pare. Nomeie a dúvida. Pergunte.
 
-| Command | Purpose |
-|---------|---------|
-| `npm run dev:local` | Dev server `--host 0.0.0.0` (:5173) |
-| `npm run build:dev` | Build with `--mode dev` |
-| `npm run build:prod` | Build with `--mode production` |
-| `npm run deploy:dev` | Build + FTP (port 21) to dev.dromeflow.com |
-| `npm run deploy:prod` | Build + SFTP (port 65002) to dromeflow.com |
-| `npm run deploy` | **Blocked** (safety, throws error) |
-| `npm run lint` | ESLint (no config files found — may fail) |
+2. **Simplicidade Primeiro**
+   - Código mínimo para resolver o problema. Nada especulativo.
+   - Zero features além do solicitado. Zero abstrações para uso único.
+   - Sem "flexibilidade" ou "configurabilidade" não pedida.
+   - Sem tratamento de erro para cenários impossíveis.
+   - Se 200 linhas podem virar 50, reescreva. Simplifique.
 
-**No test framework or test scripts exist.** No vitest, jest, or pre-commit hooks.
+3. **Mudanças Cirúrgicas**
+   - Toque apenas no necessário. Limpe apenas a bagunça que você criou.
+   - Não "melhore" código, comentários ou formatação vizinhos.
+   - Não refatore o que não está quebrado. Mantenha o estilo existente.
+   - Se notar código morto não relacionado, mencione (não apague).
+   - Remova apenas imports/variáveis/funções que **suas alterações** tornaram órfãos.
+   - Teste mental: toda linha alterada deve rastrear diretamente ao pedido do usuário.
 
-## Environments
+4. **Execução Orientada a Objetivos**
+   - Transforme tarefas em critérios verificáveis antes de começar.
+   - Ex: "Adicionar validação" → "Escrever testes para entradas inválidas e fazê-los passar"
+   - Para tarefas em etapas, liste um plano breve:
+     1. [Etapa] → verificar: [check]
+     2. [Etapa] → verificar: [check]
+   - Critérios fortes permitem autonomia. Critérios fracos ("faz funcionar") exigem microgerenciamento.
 
-| File | Role | Supabase ref | Domain |
-|------|------|-------------|--------|
-| `.env.local` | Local dev | `xivgioxraznqshlbgxdj` | localhost |
-| `.env.dev` | Validation | `uframhbsgtxckdxttofo` | dev.dromeflow.com |
-| `.env.production` | Production | `uframhbsgtxckdxttofo` | dromeflow.com |
+## 🚫 Regras Críticas (NÃO MODIFICAR SEM AUTORIZAÇÃO)
 
-- `deploy:dev` reads `.env.dev`, `deploy:prod` reads `.env.production`.
-- `.env.*` files are gitignored (via `.env.*` pattern, except `.env.example`).
-- `dist/` is **committed** to git (not in `.gitignore`).
+- **Realtime Golden Rule**:
+  - ✅ COM Realtime: **NUNCA** chame `loadData()` após CRUD (causa spinner infinito por dupla atualização).
+  - ❌ SEM Realtime: Mantenha `loadData()` após save/delete.
+  - Afeta: Pós-Vendas, Dados/Agendamentos, Dashboard.
+- **Upload Pipeline** (`services/ingestion/upload.service.ts`):
+  - Não modifique este arquivo, `UploadModal.tsx`, schema `processed_data` ou o trigger bidirecional sem autorização explícita.
+  - Lógica fixa: SheetJS → expansão multi-profissional (`;`) → divisão de repasse → STATUS `"esperar"` só se todos serviços forem `"Tarde"` → cleanup → batch 500 via RPC `process_xlsx_upload` → upsert key: `(unidade_code, atendimento_id)`.
+- **Ambientes & Deploy**:
+  - `.env.*` são ignorados no git (exceto `.env.example`).
+  - `deploy:dev` lê `.env.dev` | `deploy:prod` lê `.env.production`.
+  - `dist/` **é commitado** no git.
+  - `npm run deploy` está **bloqueado** por segurança.
+- **Phase 6 Cleanup**: Deps não usadas (`@aws-sdk/*`, `services/index.ts`, `services/mockApi.ts`) aguardam PR dedicado. **Não remova ainda**.
 
-## Realtime Golden Rule
+## 📐 Convenções & Padrões
 
-**COM Realtime**: NEVER call `loadData()` after CRUD (causes infinite spinner due to double update).
-**SEM Realtime**: Keep `loadData()` after save/delete.
+- **Nomes**: Páginas `PascalCase + Page.tsx` | Serviços `camelCase.service.ts`
+- **Logs**: `[ComponentName] Ação: detalhes` (removidos em produção via Terser `drop_console: true`)
+- **Estilo**: Tailwind CSS 4, ícones Lucide React, zero CSS modules
+- **Lógica de Negócio**: Sempre em serviços, nunca em componentes
+- **Build**: Vite 6.2 + Terser | PWA com Workbox | Compressão dupla (Brotli + Gzip, threshold 10KB) | Code splitting manual (`vendor-react` + `vendor-supabase`)
 
-Affected modules: Pós-Vendas (`pos_vendas`), Dados/Agendamentos (`processed_data`), Dashboard (multiple tables).
+## ✅ Fluxo de Trabalho Recomendado
 
-## Upload Pipeline
+1. Leia o pedido → identifique o objetivo exato
+2. Verifique regras críticas e contexto antes de propor solução
+3. Liste suposições + plano curto (se multi-etapa)
+4. Implemente apenas o necessário, seguindo convenções
+5. Verifique contra os critérios de sucesso → ajuste se necessário
+6. Confirme que nenhuma regra crítica foi violada antes de finalizar
 
-`services/ingestion/upload.service.ts`:
+---
 
-1. SheetJS reads XLSX in browser
-2. Multi-professional expansion (`;` delimiter → suffixed `atendimento_id`)
-3. Repasse division
-4. Auto STATUS: `"esperar"` only when ALL services that day are "Tarde"
-5. Obsolete cleanup by `atendimento_id` base
-6. Batch send (500) via RPC `process_xlsx_upload` — upsert key: `(unidade_code, atendimento_id)`
-7. STATUS preserved on upsert if professional unchanged; updated if professional changed
-
-**Do not modify** `upload.service.ts`, `UploadModal.tsx`, `processed_data` schema, or the bidirectional trigger (`pos_vendas ↔ processed_data`) without explicit authorization.
-
-## Build
-
-- Bundler: Vite 6.2 with Terser (`drop_console: true` in prod)
-- PWA: `vite-plugin-pwa` with Workbox auto-update
-- Dual compression: Brotli (`.br`) + Gzip (`.gz`), threshold 10KB
-- Code splitting: `vendor-react` + `vendor-supabase` manual chunks
-
-## OpenCode Config
-
-- MCP Supabase server is enabled (read-only): `.opencode/config.json` and root `opencode.json` point to Supabase MCP with schema/database/function access.
-- Skill files at `.agents/skills/` for Supabase and Postgres best practices.
-
-## Phase 6 Cleanup (Do Not Remove Yet)
-
-Unused deps awaiting dedicated PR: `@aws-sdk/client-s3`, `@aws-sdk/s3-request-presigner`, `services/index.ts` barrel, `services/mockApi.ts`.
-
-## Conventions
-
-- Pages: `PascalCase + Page.tsx`, Services: `camelCase.service.ts`
-- Console logs: `[ComponentName] Action: details` — stripped in prod via Terser
-- Tailwind 4, Lucide React icons, no CSS modules
-- Business logic in services, not components
+_Trade-off: Estas diretrizes priorizam segurança e clareza sobre velocidade. Para tarefas triviais, use o bom senso._

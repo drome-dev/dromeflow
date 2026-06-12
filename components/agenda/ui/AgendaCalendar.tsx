@@ -50,7 +50,7 @@ export const AgendaCalendar: React.FC<AgendaCalendarProps> = ({
    const days = [];
    for (let i = 0; i < firstDay; i++) {
       days.push(
-         <div key={`empty-${i}`} className="p-2 opacity-10 text-center h-full"></div>
+                   <div key={`empty-${i}`} className="p-1 opacity-10 text-center h-full"></div>
       );
    }
 
@@ -80,7 +80,7 @@ export const AgendaCalendar: React.FC<AgendaCalendarProps> = ({
          <div
             key={i}
             onClick={handleClick}
-            className={`h-full min-h-[2.5rem] flex items-center justify-center text-sm font-bold rounded-xl transition-all border cursor-pointer
+            className={`h-full min-h-[1.75rem] flex items-center justify-center text-xs sm:text-sm font-bold rounded-lg transition-all border cursor-pointer
              ${isDisabled
                ? 'opacity-20 cursor-not-allowed bg-bg-tertiary border-transparent text-text-tertiary'
                : isSelected
@@ -94,7 +94,7 @@ export const AgendaCalendar: React.FC<AgendaCalendarProps> = ({
    }
 
    return (
-      <div className="bg-bg-secondary rounded-xl border border-border-secondary overflow-hidden shadow-md p-3 flex flex-col h-full w-full">
+      <div className="bg-bg-secondary rounded-xl border border-border-secondary shadow-md p-3 flex flex-col h-full w-full min-h-0">
          <div className="flex items-center justify-between mb-2 w-full px-2">
             <button onClick={prevMonth} className="p-2 hover:bg-bg-tertiary rounded-xl text-text-secondary transition-colors cursor-pointer">
                <Icon name="ChevronLeft" className="w-5 h-5" />
@@ -113,9 +113,9 @@ export const AgendaCalendar: React.FC<AgendaCalendarProps> = ({
             ))}
          </div>
 
-         <div className="grid grid-cols-7 gap-2 flex-1 w-full px-2 pb-2">
-            {days}
-         </div>
+          <div className="grid grid-cols-7 gap-1.5 flex-1 w-full px-2 pb-2 overflow-y-auto">
+             {days}
+          </div>
       </div>
    );
 };

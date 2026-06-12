@@ -1,7 +1,7 @@
 ---
 description: Expert in testing, TDD, and test automation. Use for writing tests, improving coverage, debugging test failures.
 mode: subagent
-model: opencode/qwen3.6-plus-free
+model: mistral/codestral-latest
 temperature: 0.1
 permission:
   read: allow

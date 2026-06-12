@@ -100,7 +100,7 @@ const AgendaPage: React.FC = () => {
          </header>
 
          {/* MAIN CONTENT */}
-         <main className="flex-1 overflow-hidden relative min-h-0">
+         <main className="flex flex-col flex-1 overflow-hidden relative min-h-0">
             {activeTab === 'gestao' && (
                <AgendaPrincipalView
                   agenda={agenda}

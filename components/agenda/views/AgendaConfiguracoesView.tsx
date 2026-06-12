@@ -114,11 +114,11 @@ export const AgendaConfiguracoesView: React.FC<AgendaConfiguracoesViewProps> = (
    if (!configSettings) return null;
 
    return (
-      <div className="flex flex-col flex-1 bg-bg-secondary rounded-xl border border-border-secondary overflow-y-auto p-6 scroll-smooth">
+       <div className="flex flex-col flex-1 bg-bg-secondary rounded-xl border border-border-secondary overflow-hidden p-6">
          {/* HEADER CONTEXTUAL (Apenas seletor de dados histórico na Disponibilidade antiga - Removido daqui em favor da nova posição) */}
 
-         {configTab === 'parametros' && (
-            <div className="flex flex-col gap-4">
+          {configTab === 'parametros' && (
+             <div className="flex flex-col gap-4 flex-1 min-h-0 overflow-y-auto custom-scrollbar scroll-smooth">
                {/* CABEÇALHO DO CALENDÁRIO COM CONTROLES (Simplificado) */}
                <div className="w-full flex flex-col items-center gap-6 animate-in fade-in slide-in-from-top-2 duration-300">
                   <div className="w-full max-w-4xl space-y-4">
@@ -429,273 +429,267 @@ export const AgendaConfiguracoesView: React.FC<AgendaConfiguracoesViewProps> = (
             </div>
          )}
 
-         {configTab === 'metricas' && (
-            <div className="flex flex-col h-[calc(100vh-200px)] lg:h-[calc(100vh-250px)]">
-               <div className="flex flex-col bg-bg-secondary rounded-2xl border border-border-secondary overflow-hidden flex-1">
-                  <div className="p-4 bg-bg-tertiary border-b border-border-secondary flex flex-wrap items-center justify-between gap-4">
-                     <div className="flex items-center gap-2">
-                        {(['TODOS', 'RESERVA', 'LIVRE', 'NÃO', 'FALTOU', 'CANCELOU'] as const).map(f => (
-                           <button
-                              key={f}
-                              onClick={() => setActiveFilter(f)}
-                              className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all border cursor-pointer ${activeFilter === f
-                                 ? 'bg-accent-primary border-accent-primary text-text-on-accent shadow-lg'
-                                 : 'bg-bg-primary border-border-primary text-text-tertiary hover:border-accent-primary/50'
-                                 }`}
-                           >
-                              {f}
-                           </button>
-                        ))}
-                     </div>
+          {configTab === 'metricas' && (
+             <div className="flex flex-col bg-bg-secondary rounded-xl border border-border-secondary overflow-hidden flex-1 min-h-0">
+                <div className="shrink-0 p-4 bg-bg-tertiary border-b border-border-secondary flex flex-wrap items-center justify-between gap-4">
+                   <div className="flex items-center gap-2">
+                      {(['TODOS', 'RESERVA', 'LIVRE', 'NÃO', 'FALTOU', 'CANCELOU'] as const).map(f => (
+                         <button
+                            key={f}
+                            onClick={() => setActiveFilter(f)}
+                            className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all border cursor-pointer ${activeFilter === f
+                               ? 'bg-accent-primary border-accent-primary text-text-on-accent shadow-lg'
+                               : 'bg-bg-primary border-border-primary text-text-tertiary hover:border-accent-primary/50'
+                               }`}
+                         >
+                            {f}
+                         </button>
+                      ))}
+                   </div>
 
-                     <div className="flex-1 min-w-[150px] max-w-xs mx-auto lg:mx-0">
-                        <div className="relative">
-                           <Icon name="Search" className="w-4 h-4 text-text-tertiary absolute left-3 top-1/2 -translate-y-1/2" />
-                           <input
-                              type="text"
-                              placeholder="Buscar profissional..."
-                              value={profSearchTerm}
-                              onChange={e => setProfSearchTerm(e.target.value)}
-                              className="w-full pl-9 pr-3 py-1.5 bg-bg-primary border border-border-primary rounded-lg text-xs text-text-primary placeholder:text-text-tertiary focus:border-accent-primary focus:ring-1 focus:ring-accent-primary/20 transition-all outline-none"
-                           />
-                        </div>
-                     </div>
+                   <div className="flex-1 min-w-[150px] max-w-xs mx-auto lg:mx-0">
+                      <div className="relative">
+                         <Icon name="Search" className="w-4 h-4 text-text-tertiary absolute left-3 top-1/2 -translate-y-1/2" />
+                         <input
+                            type="text"
+                            placeholder="Buscar profissional..."
+                            value={profSearchTerm}
+                            onChange={e => setProfSearchTerm(e.target.value)}
+                            className="w-full pl-9 pr-3 py-1.5 bg-bg-primary border border-border-primary rounded-lg text-xs text-text-primary placeholder:text-text-tertiary focus:border-accent-primary focus:ring-1 focus:ring-accent-primary/20 transition-all outline-none"
+                         />
+                      </div>
+                   </div>
 
-                     {/* NOVO POSICIONAMENTO DO SELETOR DE DATA (Disponibilidade) */}
-                     <div className="flex items-center gap-2 bg-bg-primary px-2 py-1 rounded-xl border border-border-primary shadow-sm">
-                        <button
-                           onClick={() => {
-                              const d = new Date(selectedDate);
-                              d.setDate(d.getDate() - 7);
-                              setSelectedDate(d);
-                           }}
-                           className="p-1 hover:bg-bg-tertiary rounded-lg text-text-tertiary hover:text-text-primary transition-colors cursor-pointer"
-                        >
-                           <Icon name="ChevronLeft" className="w-4 h-4" />
-                        </button>
-                        <div className="flex items-center gap-2 px-1 text-[11px] font-black text-text-primary min-w-[100px] justify-center text-center uppercase tracking-tighter">
-                           {selectedDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
-                        </div>
-                        <button
-                           onClick={() => {
-                              const d = new Date(selectedDate);
-                              d.setDate(d.getDate() + 7);
-                              setSelectedDate(d);
-                           }}
-                           className="p-1 hover:bg-bg-tertiary rounded-lg text-text-tertiary hover:text-text-primary transition-colors cursor-pointer"
-                        >
-                           <Icon name="ChevronRight" className="w-4 h-4" />
-                        </button>
-                     </div>
+                   <div className="flex items-center gap-2 bg-bg-primary px-2 py-1 rounded-xl border border-border-primary shadow-sm">
+                      <button
+                         onClick={() => {
+                            const d = new Date(selectedDate);
+                            d.setDate(d.getDate() - 7);
+                            setSelectedDate(d);
+                         }}
+                         className="p-1 hover:bg-bg-tertiary rounded-lg text-text-tertiary hover:text-text-primary transition-colors cursor-pointer"
+                      >
+                         <Icon name="ChevronLeft" className="w-4 h-4" />
+                      </button>
+                      <div className="flex items-center gap-2 px-1 text-[11px] font-black text-text-primary min-w-[100px] justify-center text-center uppercase tracking-tighter">
+                         {selectedDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
+                      </div>
+                      <button
+                         onClick={() => {
+                            const d = new Date(selectedDate);
+                            d.setDate(d.getDate() + 7);
+                            setSelectedDate(d);
+                         }}
+                         className="p-1 hover:bg-bg-tertiary rounded-lg text-text-tertiary hover:text-text-primary transition-colors cursor-pointer"
+                      >
+                         <Icon name="ChevronRight" className="w-4 h-4" />
+                      </button>
+                   </div>
 
-                     <div className="text-[10px] font-bold text-text-tertiary uppercase flex items-center gap-4">
-                        <div className="flex items-center gap-2">
-                           <Icon name="Users" className="w-3 h-3" />
-                           {todasProfissionais.length} Profissionais
-                        </div>
-                     </div>
-                  </div>
+                   <div className="text-[10px] font-bold text-text-tertiary uppercase flex items-center gap-4">
+                      <div className="flex items-center gap-2">
+                         <Icon name="Users" className="w-3 h-3" />
+                         {todasProfissionais.length} Profissionais
+                      </div>
+                   </div>
+                </div>
 
-                  <div className="flex-1 overflow-auto custom-scrollbar">
-                     <div className="min-w-[1200px] overflow-visible">
-                        <div className="sticky top-0 z-20 bg-bg-tertiary/95 backdrop-blur-sm border-b border-border-secondary flex px-2 py-2">
-                           <div className="w-[280px] shrink-0 px-3 text-[10px] font-bold uppercase tracking-wider text-text-tertiary flex items-center">
-                              Profissional
-                           </div>
-                           <div className="flex-1 flex border-l border-border-secondary/40">
-                              {weekDatesMap.map((wd) => {
-                                 const dayName = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB'][wd.date.getDay()];
-                                 const isToday = wd.iso === formatLocalISO(new Date());
-                                 const isSelectedDay = wd.iso === formatLocalISO(selectedDate);
+                <div className="flex-1 overflow-y-auto custom-scrollbar min-h-0">
+                   <div className="min-w-[1200px]">
+                      <div className="sticky top-0 z-20 bg-bg-tertiary/95 backdrop-blur-sm border-b border-border-secondary flex px-2 py-2">
+                         <div className="w-[280px] shrink-0 px-3 text-[10px] font-bold uppercase tracking-wider text-text-tertiary flex items-center">
+                            Profissional
+                         </div>
+                         <div className="flex-1 flex border-l border-border-secondary/40">
+                            {weekDatesMap.map((wd) => {
+                               const dayName = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB'][wd.date.getDay()];
+                               const isToday = wd.iso === formatLocalISO(new Date());
+                               const isSelectedDay = wd.iso === formatLocalISO(selectedDate);
 
-                                 return (
-                                    <div
-                                       key={wd.iso}
-                                       onClick={() => setSelectedDate(wd.date)}
-                                       className={`flex-1 flex flex-col items-center justify-center border-r border-border-secondary/40 py-1 cursor-pointer transition-all
-                                          ${isSelectedDay ? 'bg-accent-primary/10' : isToday ? 'bg-accent-primary/5' : ''} 
-                                          ${isSelectedDay ? 'bg-accent-primary text-text-on-accent' : ''}`}
-                                    >
-                                       <span className={`text-[10px] font-bold uppercase ${isSelectedDay ? 'text-text-on-accent' : isToday ? 'text-accent-primary' : 'text-text-tertiary'}`}>
-                                          {dayName} {wd.date.getDate().toString().padStart(2, '0')}/{(wd.date.getMonth() + 1).toString().padStart(2, '0')}
-                                       </span>
-                                       <div className={`flex w-full mt-1 border-t ${isSelectedDay ? 'border-text-on-accent/20' : 'border-border-secondary/20'}`}>
-                                          <span className={`flex-1 text-center text-[8px] font-bold uppercase pt-1 border-r ${isSelectedDay ? 'border-text-on-accent/20 text-text-on-accent/60' : 'border-border-secondary/20 text-text-tertiary'}`}>MAN</span>
-                                          <span className={`flex-1 text-center text-[8px] font-bold uppercase pt-1 ${isSelectedDay ? 'text-text-on-accent/60' : 'text-text-tertiary'}`}>TAR</span>
-                                       </div>
-                                    </div>
-                                 );
-                              })}
-                           </div>
-                        </div>
+                               return (
+                                  <div
+                                     key={wd.iso}
+                                     onClick={() => setSelectedDate(wd.date)}
+                                     className={`flex-1 flex flex-col items-center justify-center border-r border-border-secondary/40 py-1 cursor-pointer transition-all
+                                        ${isSelectedDay ? 'bg-accent-primary/10' : isToday ? 'bg-accent-primary/5' : ''} 
+                                        ${isSelectedDay ? 'bg-accent-primary text-text-on-accent' : ''}`}
+                                  >
+                                     <span className={`text-[10px] font-bold uppercase ${isSelectedDay ? 'text-text-on-accent' : isToday ? 'text-accent-primary' : 'text-text-tertiary'}`}>
+                                        {dayName} {wd.date.getDate().toString().padStart(2, '0')}/{(wd.date.getMonth() + 1).toString().padStart(2, '0')}
+                                     </span>
+                                     <div className={`flex w-full mt-1 border-t ${isSelectedDay ? 'border-text-on-accent/20' : 'border-border-secondary/20'}`}>
+                                        <span className={`flex-1 text-center text-[8px] font-bold uppercase pt-1 border-r ${isSelectedDay ? 'border-text-on-accent/20 text-text-on-accent/60' : 'border-border-secondary/20 text-text-tertiary'}`}>MAN</span>
+                                        <span className={`flex-1 text-center text-[8px] font-bold uppercase pt-1 ${isSelectedDay ? 'text-text-on-accent/60' : 'text-text-tertiary'}`}>TAR</span>
+                                     </div>
+                                  </div>
+                               );
+                            })}
+                         </div>
+                      </div>
 
-                        <div className="flex flex-col p-2 gap-1 pb-32">
-                           {loading ? (
-                              <div className="py-20 flex flex-col items-center justify-center text-text-tertiary">
-                                 <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-accent-primary mb-4"></div>
-                                 <p className="text-xs font-bold uppercase tracking-widest opacity-60">Carregando Agenda...</p>
-                              </div>
-                           ) : ((() => {
-                              const filteredProfs = todasProfissionais.filter(p => {
-                                 if (!p.id) return false;
-                                 if (profSearchTerm && !p.nome?.toLowerCase().includes(profSearchTerm.toLowerCase())) return false;
-                                 if (activeFilter === 'TODOS') return true;
-                                 if (activeFilter === 'CLIENTE') return atendimentosSemana.some(a => matchName(a.PROFISSIONAL, p.nome));
-                                 if (['LIVRE', 'NÃO', 'FALTOU', 'CANCELOU'].includes(activeFilter)) {
-                                    return todasDisponibilidades.some(d =>
-                                       d.profissional_id === p.id &&
-                                       (d.status_manha === activeFilter || d.status_tarde === activeFilter) &&
-                                       weekDatesMap.some(wd => matchDate(d.data, wd.iso))
-                                    );
-                                 }
-                                 return true;
-                              });
+                      <div className="flex flex-col p-2 gap-1 pb-32">
+                         {loading ? (
+                            <div className="py-20 flex flex-col items-center justify-center text-text-tertiary">
+                               <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-accent-primary mb-4"></div>
+                               <p className="text-xs font-bold uppercase tracking-widest opacity-60">Carregando Agenda...</p>
+                            </div>
+                         ) : ((() => {
+                            const filteredProfs = todasProfissionais.filter(p => {
+                               if (!p.id) return false;
+                               if (profSearchTerm && !p.nome?.toLowerCase().includes(profSearchTerm.toLowerCase())) return false;
+                               if (activeFilter === 'TODOS') return true;
+                               if (activeFilter === 'CLIENTE') return atendimentosSemana.some(a => matchName(a.PROFISSIONAL, p.nome));
+                               if (['LIVRE', 'NÃO', 'FALTOU', 'CANCELOU'].includes(activeFilter)) {
+                                  return todasDisponibilidades.some(d =>
+                                     d.profissional_id === p.id &&
+                                     (d.status_manha === activeFilter || d.status_tarde === activeFilter) &&
+                                     weekDatesMap.some(wd => matchDate(d.data, wd.iso))
+                                  );
+                               }
+                               return true;
+                            });
 
-                              if (filteredProfs.length === 0) return (
-                                 <div className="py-20 text-center text-text-tertiary opacity-40">
-                                    <Icon name="SearchX" className="w-12 h-12 mx-auto mb-4" />
-                                    <p className="font-bold uppercase tracking-widest text-xs">Nenhum resultado</p>
-                                 </div>
-                              );
+                            if (filteredProfs.length === 0) return (
+                               <div className="py-20 text-center text-text-tertiary opacity-40">
+                                  <Icon name="SearchX" className="w-12 h-12 mx-auto mb-4" />
+                                  <p className="font-bold uppercase tracking-widest text-xs">Nenhum resultado</p>
+                               </div>
+                            );
 
-                              return filteredProfs.map(prof => {
-                                 const isSelected = profWithMetrics === prof.id;
-                                 const atsSemanaProf = atendimentosSemana.filter(a => matchName(a.PROFISSIONAL, prof.nome));
+                            return filteredProfs.map(prof => {
+                               const isSelected = profWithMetrics === prof.id;
+                               const atsSemanaProf = atendimentosSemana.filter(a => matchName(a.PROFISSIONAL, prof.nome));
 
-                                 return (
-                                    <div key={prof.id} className={`group bg-bg-primary rounded-xl border transition-all duration-200 h-10 flex border-border-primary hover:border-border-secondary shadow-sm ${statusMenu?.profId === prof.id ? 'relative z-50' : 'relative z-0'} ${isSelected ? 'border-accent-primary ring-1 ring-accent-primary' : ''}`}>
-                                       <div
-                                          className={`w-[280px] shrink-0 border-r border-border-secondary py-1 px-3 flex flex-col justify-center cursor-pointer transition-colors sticky left-0 z-10 bg-bg-primary rounded-l-xl hover:bg-bg-tertiary/50 ${isSelected ? 'bg-accent-primary/10' : ''}`}
-                                          onClick={() => {
-                                             setProfWithMetrics(isSelected ? null : prof.id);
-                                             if (!isSelected) loadProfissionalMetrics(prof.id, prof.nome);
-                                          }}
-                                       >
-                                          <span className="font-bold text-xs truncate text-text-primary">{prof.nome}</span>
-                                          <span className="text-[9px] uppercase truncate text-text-tertiary">{prof.habilidade}</span>
-                                       </div>
+                               return (
+                                  <div key={prof.id} className={`group bg-bg-primary rounded-xl border transition-all duration-200 h-10 flex border-border-primary hover:border-border-secondary shadow-sm ${statusMenu?.profId === prof.id ? 'relative z-50' : 'relative z-0'} ${isSelected ? 'border-accent-primary ring-1 ring-accent-primary' : ''}`}>
+                                     <div
+                                        className={`w-[280px] shrink-0 border-r border-border-secondary py-1 px-3 flex flex-col justify-center cursor-pointer transition-colors sticky left-0 z-10 bg-bg-primary rounded-l-xl hover:bg-bg-tertiary/50 ${isSelected ? 'bg-accent-primary/10' : ''}`}
+                                        onClick={() => {
+                                           setProfWithMetrics(isSelected ? null : prof.id);
+                                           if (!isSelected) loadProfissionalMetrics(prof.id, prof.nome);
+                                        }}
+                                     >
+                                        <span className="font-bold text-xs truncate text-text-primary">{prof.nome}</span>
+                                        <span className="text-[9px] uppercase truncate text-text-tertiary">{prof.habilidade}</span>
+                                     </div>
 
-                                       <div className="flex-1 flex border-l border-border-secondary/40 items-stretch">
-                                          {weekDatesMap.map((wd) => {
-                                             const isToday = wd.iso === formatLocalISO(new Date());
-                                             const isSelectedDay = wd.iso === formatLocalISO(selectedDate);
-                                             const disp = todasDisponibilidades.find(d => d.profissional_id === prof.id && matchDate(d.data, wd.iso));
-                                             const atsDia = atsSemanaProf.filter(a => matchDate(a.DATA, wd.iso));
+                                     <div className="flex-1 flex border-l border-border-secondary/40 items-stretch">
+                                        {weekDatesMap.map((wd) => {
+                                           const isToday = wd.iso === formatLocalISO(new Date());
+                                           const isSelectedDay = wd.iso === formatLocalISO(selectedDate);
+                                           const disp = todasDisponibilidades.find(d => d.profissional_id === prof.id && matchDate(d.data, wd.iso));
+                                           const atsDia = atsSemanaProf.filter(a => matchDate(a.DATA, wd.iso));
 
-                                              const getPeriodStatus = (startH: number, endH: number) => {
-                                                 const normalizeStatus = (val: string | null | undefined): string | null => {
-                                                    if (!val) return null;
-                                                    const v = val.toUpperCase().trim();
-                                                    if (v.includes('NÃO') || v === 'NAO') return 'NÃO';
-                                                    if (v === '8 HORAS') return 'LIVRE';
-                                                    if (v === '6 HORAS' || v.includes('MANHÃ') || v.includes('TARDE') || v === 'LIVRE') return 'LIVRE';
-                                                    return val;
-                                                 };
+                                             const getPeriodStatus = (startH: number, endH: number) => {
+                                                const normalizeStatus = (val: string | null | undefined): string | null => {
+                                                   if (!val) return null;
+                                                   const v = val.toUpperCase().trim();
+                                                   if (v.includes('NÃO') || v === 'NAO') return 'NÃO';
+                                                   if (v === '8 HORAS') return 'LIVRE';
+                                                   if (v === '6 HORAS' || v.includes('MANHÃ') || v.includes('TARDE') || v === 'LIVRE') return 'LIVRE';
+                                                   return val;
+                                                };
 
-                                                 const rawStatus = disp?.[startH < 13 ? 'status_manha' : 'status_tarde'];
-                                                 const manualStatus = normalizeStatus(rawStatus);
+                                                const overlapAt = atsDia.find(at => {
+                                                   const [atStH] = (at.HORARIO || '0:0').split(':').map(Number);
+                                                   const dur = parseFloat(at['PERÍODO']?.toString().replace(',', '.') || '1');
+                                                   return atStH < endH && (atStH + dur) > startH;
+                                                });
 
-                                                 if (!manualStatus) return { label: '—', color: 'bg-bg-tertiary text-text-tertiary' };
+                                                if (overlapAt) return {
+                                                   label: 'CLIENTE',
+                                                   color: (parseFloat(overlapAt['PERÍODO'] || '0') === 8 ? 'bg-[#1E3A8A]' : 'bg-[#3B82F6]') + ' text-white shadow-sm',
+                                                   tooltip: `${overlapAt.HORARIO} - ${overlapAt.CLIENTE || 'Cliente'} (${overlapAt['SERVIÇO'] || 'Serviço'})`
+                                                };
 
-                                                 const overlapAt = atsDia.find(at => {
-                                                    const [atStH] = (at.HORARIO || '0:0').split(':').map(Number);
-                                                    const dur = parseFloat(at['PERÍODO']?.toString().replace(',', '.') || '1');
-                                                    return atStH < endH && (atStH + dur) > startH;
-                                                 });
+                                                const rawStatus = disp?.[startH < 13 ? 'status_manha' : 'status_tarde'];
+                                                const manualStatus = normalizeStatus(rawStatus);
 
-                                                 if (overlapAt) return {
-                                                    label: 'CLIENTE',
-                                                    color: (parseFloat(overlapAt['PERÍODO'] || '0') === 8 ? 'bg-[#1E3A8A]' : 'bg-[#3B82F6]') + ' text-white shadow-sm',
-                                                    tooltip: `${overlapAt.HORARIO} - ${overlapAt.CLIENTE || 'Cliente'} (${overlapAt['SERVIÇO'] || 'Serviço'})`
-                                                 };
+                                                if (!manualStatus) return { label: '—', color: 'bg-bg-tertiary text-text-tertiary' };
 
-                                                 if (manualStatus === 'LIVRE') {
-                                                    const isFullDay = disp?.periodos?.some((p: string) => p === '8 horas' || p === '6 horas');
-                                                    if (isFullDay) {
-                                                       return { label: 'LIVRE', color: 'bg-[#15803D] text-white shadow-sm' };
-                                                    }
-                                                    return { label: 'LIVRE', color: 'bg-[#4ADE80] text-black shadow-sm' };
-                                                 }
+                                                if (manualStatus === 'LIVRE') {
+                                                   const isFullDay = disp?.periodos?.some((p: string) => p === '8 horas' || p === '6 horas');
+                                                   if (isFullDay) {
+                                                      return { label: 'LIVRE', color: 'bg-[#15803D] text-white shadow-sm' };
+                                                   }
+                                                   return { label: 'LIVRE', color: 'bg-[#4ADE80] text-black shadow-sm' };
+                                                }
 
-                                                 let color = 'bg-[#F97316] text-black shadow-sm';
-                                                 if (manualStatus === 'FALTOU') color = 'bg-[#EF4444] text-white shadow-sm';
-                                                 else if (manualStatus === 'CANCELOU') color = 'bg-[#F97316] text-white shadow-sm';
-                                                 else if (manualStatus === 'RESERVA') color = 'bg-[#FACC15] text-black shadow-sm';
-                                                 else if (manualStatus === 'NÃO') color = 'bg-[#1A1A1A] text-white shadow-sm';
-                                                 return { label: manualStatus, color };
-                                              };
+                                                let color = 'bg-[#F97316] text-black shadow-sm';
+                                                if (manualStatus === 'FALTOU') color = 'bg-[#EF4444] text-white shadow-sm';
+                                                else if (manualStatus === 'CANCELOU') color = 'bg-[#F97316] text-white shadow-sm';
+                                                else if (manualStatus === 'RESERVA') color = 'bg-[#FACC15] text-black shadow-sm';
+                                                else if (manualStatus === 'NÃO') color = 'bg-[#1A1A1A] text-white shadow-sm';
+                                                return { label: manualStatus, color };
+                                             };
 
-                                              const mStatus = getPeriodStatus(6, 13);
-                                             const tStatus = getPeriodStatus(13, 20);
-                                             const isUnified = mStatus.label === tStatus.label && mStatus.label !== '—';
+                                            const mStatus = getPeriodStatus(6, 13);
+                                           const tStatus = getPeriodStatus(13, 20);
+                                           const isUnified = mStatus.label === tStatus.label && mStatus.label !== '—';
 
-                                             return (
-                                                <div key={wd.iso} className={`flex-1 flex border-r border-border-secondary/40 relative ${isSelectedDay ? 'bg-accent-primary/10' : isToday ? 'bg-accent-primary/5' : ''}`}>
-                                                   {isUnified ? (
-                                                      <div
-                                                         onClick={() => setStatusMenu(statusMenu?.profId === prof.id && statusMenu?.period === 'M' && statusMenu?.dateStr === wd.iso ? null : { profId: prof.id, period: 'M', dateStr: wd.iso })}
-                                                         className={`flex-1 flex items-center justify-center text-[9px] font-bold uppercase cursor-pointer transition-all hover:brightness-110 ${mStatus.color}`}
-                                                         title={mStatus.tooltip || tStatus.tooltip}
-                                                      >
-                                                         {mStatus.label}
-                                                      </div>
-                                                   ) : (
-                                                      <>
-                                                         <div
-                                                            onClick={() => setStatusMenu(statusMenu?.profId === prof.id && statusMenu?.period === 'M' && statusMenu?.dateStr === wd.iso ? null : { profId: prof.id, period: 'M', dateStr: wd.iso })}
-                                                            className={`flex-1 flex items-center justify-center text-[9px] font-bold uppercase cursor-pointer border-r border-border-secondary/20 transition-all hover:brightness-110 ${mStatus.color}`}
-                                                            title={mStatus.tooltip}
-                                                         >{mStatus.label}</div>
-                                                         <div
-                                                            onClick={() => setStatusMenu(statusMenu?.profId === prof.id && statusMenu?.period === 'T' && statusMenu?.dateStr === wd.iso ? null : { profId: prof.id, period: 'T', dateStr: wd.iso })}
-                                                            className={`flex-1 flex items-center justify-center text-[9px] font-bold uppercase cursor-pointer transition-all hover:brightness-110 ${tStatus.color}`}
-                                                            title={tStatus.tooltip}
-                                                         >{tStatus.label}</div>
-                                                      </>
-                                                   )}
+                                           return (
+                                              <div key={wd.iso} className={`flex-1 flex border-r border-border-secondary/40 relative ${isSelectedDay ? 'bg-accent-primary/10' : isToday ? 'bg-accent-primary/5' : ''}`}>
+                                                 {isUnified ? (
+                                                    <div
+                                                       onClick={() => setStatusMenu(statusMenu?.profId === prof.id && statusMenu?.period === 'M' && statusMenu?.dateStr === wd.iso ? null : { profId: prof.id, period: 'M', dateStr: wd.iso })}
+                                                       className={`flex-1 flex items-center justify-center text-[9px] font-bold uppercase cursor-pointer transition-all hover:brightness-110 ${mStatus.color}`}
+                                                       title={mStatus.tooltip || tStatus.tooltip}
+                                                    >
+                                                       {mStatus.label}
+                                                    </div>
+                                                 ) : (
+                                                    <>
+                                                       <div
+                                                          onClick={() => setStatusMenu(statusMenu?.profId === prof.id && statusMenu?.period === 'M' && statusMenu?.dateStr === wd.iso ? null : { profId: prof.id, period: 'M', dateStr: wd.iso })}
+                                                          className={`flex-1 flex items-center justify-center text-[9px] font-bold uppercase cursor-pointer border-r border-border-secondary/20 transition-all hover:brightness-110 ${mStatus.color}`}
+                                                          title={mStatus.tooltip}
+                                                       >{mStatus.label}</div>
+                                                       <div
+                                                          onClick={() => setStatusMenu(statusMenu?.profId === prof.id && statusMenu?.period === 'T' && statusMenu?.dateStr === wd.iso ? null : { profId: prof.id, period: 'T', dateStr: wd.iso })}
+                                                          className={`flex-1 flex items-center justify-center text-[9px] font-bold uppercase cursor-pointer transition-all hover:brightness-110 ${tStatus.color}`}
+                                                          title={tStatus.tooltip}
+                                                       >{tStatus.label}</div>
+                                                    </>
+                                                 )}
 
-                                                   {/* MENU DE STATUS (CONDICIONAL: CARGA HORÁRIA vs STATUS MANUAIS) */}
-                                                   {statusMenu?.profId === prof.id && statusMenu?.dateStr === wd.iso && (
-                                                      <div data-menu className="absolute top-full left-0 mt-1 z-[100] bg-bg-secondary border border-border-secondary rounded-md shadow-lg py-1 min-w-[170px]">
-                                                         {(() => {
-                                                            // Se ambos os períodos estão vazios, mostramos "Carga Horária" (8h, 6h, etc.)
-                                                            // Se já tem carga horária, mostramos os "Status" (RESERVA, cancelou, etc.)
-                                                            const isInitialSetup = mStatus.label === '—' && tStatus.label === '—';
-                                                            const optionsToDisplay = isInitialSetup ? MOBILE_STATUS_OPTIONS : STATUS_OPTIONS;
+                                                 {statusMenu?.profId === prof.id && statusMenu?.dateStr === wd.iso && (
+                                                    <div data-menu className="absolute top-full left-0 mt-1 z-[100] bg-bg-secondary border border-border-secondary rounded-md shadow-lg py-1 min-w-[170px]">
+                                                       {(() => {
+                                                          const isInitialSetup = mStatus.label === '—' && tStatus.label === '—';
+                                                          const optionsToDisplay = isInitialSetup ? MOBILE_STATUS_OPTIONS : STATUS_OPTIONS;
 
-                                                            return optionsToDisplay.map(s => {
-                                                               const label = STATUS_LABELS[s as StatusOption]?.label || (s === 'NÃO DISPONIVEL' ? 'NÃO DISPONÍVEL' : s);
-                                                               return (
-                                                                  <button
-                                                                     key={s}
-                                                                     onClick={(ev) => {
-                                                                        ev.stopPropagation();
-                                                                        handleStatusUpdate(prof.id, s, statusMenu.period, wd.iso);
-                                                                        setStatusMenu(null);
-                                                                     }}
-                                                                     className="w-full px-4 py-2 text-left text-[11px] font-bold uppercase hover:bg-bg-tertiary border-b border-border-secondary/20 last:border-0 transition-colors"
-                                                                  >
-                                                                     {label}
-                                                                  </button>
-                                                               );
-                                                            });
-                                                         })()}
-                                                      </div>
-                                                   )}
-                                                </div>
-                                             );
-                                          })}
-                                       </div>
-                                    </div>
-                                 );
-                              });
-                           })())}
-                        </div>
-                     </div>
-                  </div>
-               </div>
-            </div>
-         )}
+                                                          return optionsToDisplay.map(s => {
+                                                             const label = STATUS_LABELS[s as StatusOption]?.label || (s === 'NÃO DISPONIVEL' ? 'NÃO DISPONÍVEL' : s);
+                                                             return (
+                                                                <button
+                                                                   key={s}
+                                                                   onClick={(ev) => {
+                                                                      ev.stopPropagation();
+                                                                      handleStatusUpdate(prof.id, s, statusMenu.period, wd.iso);
+                                                                      setStatusMenu(null);
+                                                                   }}
+                                                                   className="w-full px-4 py-2 text-left text-[11px] font-bold uppercase hover:bg-bg-tertiary border-b border-border-secondary/20 last:border-0 transition-colors"
+                                                                >
+                                                                   {label}
+                                                                </button>
+                                                             );
+                                                          });
+                                                       })()}
+                                                    </div>
+                                                 )}
+                                              </div>
+                                           );
+                                        })}
+                                     </div>
+                                  </div>
+                               );
+                            });
+                         })())}
+                      </div>
+                   </div>
+                </div>
+             </div>
+          )}
       </div>
    );
 };

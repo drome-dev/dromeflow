@@ -3,7 +3,7 @@
   "mcp": {
     "supabase": {
       "type": "remote",
-      "url": "https://mcp.supabase.com/mcp?project_ref=uframhbsgtxckdxttofo&read_only=true&features=database%2Cdebugging%2Cdevelopment%2Cbranching%2Cfunctions%2Cstorage",
+      "url": "https://mcp.supabase.com/mcp?project_ref=uframhbsgtxckdxttofo&features=database%2Cdebugging%2Cdevelopment%2Cbranching%2Cfunctions%2Cstorage",
       "enabled": true
     }
   }
