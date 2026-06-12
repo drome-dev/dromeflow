@@ -3,6 +3,10 @@ import { supabase } from '../services/supabaseClient';
 import { activityLogger } from '../services/utils/activityLogger.service';
 import { User, Profile, Module, Unit } from '../types';
 import { fetchUnitModuleIds } from '../services/units/unitModules.service';
+import { createLogger } from '../services/utils/log';
+import { passkeyService } from '../services/passkey/passkey.service';
+
+const log = createLogger('AuthContext');
 
 interface AuthContextType {
   user: User | null;
@@ -10,6 +14,7 @@ interface AuthContextType {
   userModules: Module[];
   userUnits: Unit[];
   login: (email: string, password: string) => Promise<void>;
+  loginWithPasskey: () => Promise<void>;
   logout: () => void;
   loading: boolean;
   getModulesForUnit: (unitId: string | null) => Promise<Module[]>;
@@ -30,20 +35,26 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   // 3. Futuras otimizações: poderemos cachear/invalidar quando atribuições forem alteradas (ex: após salvar ManageUsersPage)
 
   useEffect(() => {
-    const checkStoredUser = async () => {
+    const restoreSession = async () => {
+      // Restaura sessão do localStorage (auth custom, sem Supabase Auth)
       const storedProfile = localStorage.getItem('userProfile');
       if (storedProfile) {
-        const parsedProfile: Profile = JSON.parse(storedProfile);
-        setProfile(parsedProfile);
-        setUser({ id: parsedProfile.id, email: parsedProfile.email || '' });
-        await Promise.all([
-          fetchUserModules(parsedProfile),
-          fetchUnitsForUser(parsedProfile)
-        ]);
+        try {
+          const parsedProfile: Profile = JSON.parse(storedProfile);
+          setProfile(parsedProfile);
+          setUser({ id: parsedProfile.id, email: parsedProfile.email || '' });
+          await Promise.all([
+            fetchUserModules(parsedProfile),
+            fetchUnitsForUser(parsedProfile)
+          ]);
+        } catch (err) {
+          log.error('[AuthContext] Erro ao restaurar sessão', { error: err });
+          localStorage.removeItem('userProfile');
+        }
       }
       setLoading(false);
     };
-    checkStoredUser();
+    restoreSession();
   }, []);
 
   // Busca módulos disponíveis ao usuário:
@@ -60,7 +71,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         .eq('is_active', true)
         .contains('allowed_profiles', ['super_admin']);
       if (error) {
-        console.error('Error fetching super_admin scoped modules:', error.message);
+        log.error('Error fetching super_admin scoped modules', { message: error.message });
         setUserModules([]);
       } else {
         const ordered = (data || []).sort((a: any, b: any) => {
@@ -75,7 +86,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         .select('module_id')
         .eq('user_id', profile.id);
       if (userModulesError) {
-        console.error('Error fetching user modules:', userModulesError.message);
+        log.error('Error fetching user modules', { message: userModulesError.message });
       }
       const moduleIds = (userModulesData || []).map(um => um.module_id);
 
@@ -93,7 +104,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         .eq('is_active', true)
         .contains('allowed_profiles', [profile.role]);
       if (modulesError) {
-        console.error('Error fetching assigned+allowed modules:', modulesError.message);
+        log.error('Error fetching assigned+allowed modules', { message: modulesError.message });
         setUserModules([]);
         return;
       }
@@ -140,7 +151,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
         setUserUnits(mappedUnits);
       } catch (err) {
-        console.error('[AuthContext] Erro ao carregar todas as unidades para super_admin:', err);
+        log.error('[AuthContext] Erro ao carregar todas as unidades para super_admin', { error: err });
         setUserUnits([]);
       }
       return;
@@ -149,13 +160,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       // Usa serviço segmentado com fallback (RPC get_user_units -> fallback join manual)
       const { fetchUserUnits } = await import('../services/auth/users.service');
       const units = await fetchUserUnits(profile.id as string);
-      console.log('[AuthContext] Units retornadas de fetchUserUnits:', units);
-      console.log('[AuthContext] Primeira unidade tem is_active?', units[0]?.is_active);
+      log.info('[AuthContext] Units retornadas de fetchUserUnits', { units });
+      log.info('[AuthContext] Primeira unidade tem is_active? ' + units[0]?.is_active);
       // Ordena por nome para consistência
       const ordered = [...units].sort((a, b) => a.unit_name.localeCompare(b.unit_name));
       setUserUnits(ordered);
     } catch (err) {
-      console.error('Erro ao carregar unidades do usuário:', err);
+      log.error('Erro ao carregar unidades do usuário', { error: err });
       setUserUnits([]);
     }
   };
@@ -199,7 +210,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           .eq('is_active', true);
 
         if (error) {
-          console.error('[AuthContext] Erro ao buscar módulos da unidade (super_admin view):', error);
+          log.error('[AuthContext] Erro ao buscar módulos da unidade (super_admin view)', { error });
           return userModules;
         }
 
@@ -229,7 +240,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           .eq('is_active', true);
 
         if (error) {
-          console.error('[AuthContext] Erro ao buscar módulos da unidade (admin):', error);
+          log.error('[AuthContext] Erro ao buscar módulos da unidade (admin)', { error });
           return userModules; // Fallback
         }
 
@@ -251,7 +262,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         .eq('user_id', profile.id);
 
       if (userModulesError) {
-        console.error('[AuthContext] Erro ao buscar user_modules:', userModulesError);
+        log.error('[AuthContext] Erro ao buscar user_modules', { error: userModulesError });
         return [];
       }
 
@@ -271,7 +282,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         .eq('is_active', true);
 
       if (modulesError) {
-        console.error('[AuthContext] Erro ao buscar módulos do usuário na unidade:', modulesError);
+        log.error('[AuthContext] Erro ao buscar módulos do usuário na unidade', { error: modulesError });
         return [];
       }
 
@@ -284,35 +295,73 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       });
 
     } catch (err) {
-      console.error('[AuthContext] Erro ao filtrar módulos por unidade:', err);
+      log.error('[AuthContext] Erro ao filtrar módulos por unidade', { error: err });
       return userModules; // Fallback
     }
   };
 
   const login = async (email: string, password: string) => {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('email', email)
-      .eq('password', password)
-      .single();
+    // 1. Autentica via RPC auth_login_v2 (custom auth, direto no banco)
+    const { data: result, error: rpcError } = await supabase.rpc('auth_login_v2', {
+      p_email: email,
+      p_password: password,
+    });
 
-    if (error || !data) {
-      throw new Error('Credenciais inválidas');
+    if (rpcError || !result?.success) {
+      throw new Error(result?.error || rpcError?.message || 'Credenciais inválidas');
     }
 
-    setProfile(data);
-    setUser({ id: data.id, email: data.email || '' });
-    localStorage.setItem('userProfile', JSON.stringify(data));
+    // 2. Busca o perfil completo pelo id retornado
+    const profileId = result.profile?.id;
+    if (!profileId) {
+      throw new Error('Perfil não encontrado');
+    }
+
+    const { data: profileData, error: profileError } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', profileId)
+      .single();
+
+    if (profileError || !profileData) {
+      throw new Error('Perfil não encontrado');
+    }
+
+    setProfile(profileData);
+    setUser({ id: profileData.id, email: profileData.email || '' });
+    localStorage.setItem('userProfile', JSON.stringify(profileData));
     await Promise.all([
-      fetchUserModules(data),
-      fetchUnitsForUser(data)
+      fetchUserModules(profileData),
+      fetchUnitsForUser(profileData)
     ]);
 
     // Registrar login no activity_logs
-    const unitCode = data.units?.[0]?.code || null;
-    activityLogger.logLogin(data.email || data.name, unitCode, data.role);
+    const unitCode = profileData.units?.[0]?.code || null;
+    activityLogger.logLogin(profileData.email || profileData.full_name, unitCode, profileData.role);
   };
+
+  const loginWithPasskey = async () => {
+    const { email } = await passkeyService.signIn()
+    const { data: profileData, error: profileError } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('email', email)
+      .single()
+
+    if (profileError || !profileData) {
+      throw new Error('Perfil não encontrado')
+    }
+
+    setProfile(profileData)
+    setUser({ id: profileData.id, email: profileData.email || '' })
+    localStorage.setItem('userProfile', JSON.stringify(profileData))
+    await Promise.all([
+      fetchUserModules(profileData),
+      fetchUnitsForUser(profileData)
+    ])
+
+    activityLogger.logLogin(profileData.email || profileData.full_name, null, profileData.role)
+  }
 
   const logout = () => {
     // Registrar logout antes de limpar o estado
@@ -340,6 +389,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     userModules,
     userUnits,
     login,
+    loginWithPasskey,
     logout,
     loading,
     getModulesForUnit,

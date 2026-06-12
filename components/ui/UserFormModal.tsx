@@ -2,31 +2,33 @@ import React, { useState, useEffect } from 'react';
 import { fetchAllUnits } from '../../services/units/units.service';
 import { fetchAllModules } from '../../services/modules/modules.service';
 import { fetchUserAssignments } from '../../services/auth/users.service';
-import { User, Profile, UserRole, Unit, Module } from '../../types';
+import { User, Profile, Unit, Module } from '../../types';
 import { Icon } from './Icon';
+import { ROLES, RoleKey } from '../../config/roles';
+import { normalizeRole, canEditRoles } from '../../services/auth/rbac';
 
 export type FullUser = User & Profile;
 
 type UserDataPayload = Partial<FullUser> & {
-  password?: string;
-  unit_ids?: string[];
-  module_ids?: string[];
+	password?: string;
+	unit_ids?: string[];
+	module_ids?: string[];
 };
 
 export const UserFormModal: React.FC<{
-  isOpen: boolean;
-  onClose: () => void;
-  onSave: (user: UserDataPayload) => void;
-  user: FullUser | null;
-  currentAdminProfile?: Profile | null;
-  forceUnitId?: string;
+	isOpen: boolean;
+	onClose: () => void;
+	onSave: (user: UserDataPayload) => void;
+	user: FullUser | null;
+	currentAdminProfile?: Profile | null;
+	forceUnitId?: string;
 }> = ({ isOpen, onClose, onSave, user, currentAdminProfile, forceUnitId }) => {
-  const [formData, setFormData] = useState({
-    full_name: '',
-    email: '',
-    password: '',
-    role: UserRole.USER,
-  });
+	const [formData, setFormData] = useState({
+		full_name: '',
+		email: '',
+		password: '',
+		role: ROLES.user.key,
+	});
   const [error, setError] = useState('');
   const [allUnits, setAllUnits] = useState<Unit[]>([]);
   const [allModules, setAllModules] = useState<Module[]>([]);
@@ -96,21 +98,6 @@ export const UserFormModal: React.FC<{
       }
     };
 
-    if (user) {
-      // Se um admin está tentando editar um super_admin, força o role para admin
-      const roleToSet = (currentAdminProfile?.role === 'admin' && user.role === UserRole.SUPER_ADMIN)
-        ? UserRole.ADMIN
-        : user.role;
-
-      setFormData({
-        full_name: user.full_name,
-        email: user.email,
-        password: '',
-        role: roleToSet,
-      });
-    } else {
-      setFormData({ full_name: '', email: '', password: '', role: UserRole.USER });
-    }
     loadPrerequisites();
   }, [user, isOpen]);
 
@@ -201,10 +188,9 @@ export const UserFormModal: React.FC<{
 
   useEffect(() => {
     if (user) {
-      // Se um admin está tentando editar um super_admin, força o role para admin
-      const roleToSet = (currentAdminProfile?.role === 'admin' && user.role === UserRole.SUPER_ADMIN)
-        ? UserRole.ADMIN
-        : user.role;
+      const roleToSet: RoleKey = (currentAdminProfile?.role === 'admin' && user.role === 'super_admin')
+        ? 'admin'
+        : (user.role as RoleKey);
 
       setFormData({
         full_name: user.full_name,
@@ -213,13 +199,13 @@ export const UserFormModal: React.FC<{
         role: roleToSet,
       });
     } else {
-      setFormData({ full_name: '', email: '', password: '', role: UserRole.USER });
+      setFormData({ full_name: '', email: '', password: '', role: 'user' });
     }
   }, [user, isOpen, currentAdminProfile]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value as UserRole }));
+    setFormData(prev => ({ ...prev, [name]: normalizeRole(value) }));
   };
 
   const handleUnitToggle = (unitId: string) => {
@@ -262,7 +248,7 @@ export const UserFormModal: React.FC<{
       setError('Por favor, preencha todos os campos obrigatórios.');
       return;
     }
-    const isSuperAdmin = formData.role === UserRole.SUPER_ADMIN;
+    const isSuperAdmin = formData.role === 'super_admin';
 
     // Agrupa todos os módulos de todas as unidades
     const allModuleIds = new Set<string>();
@@ -289,7 +275,7 @@ export const UserFormModal: React.FC<{
 
   if (!isOpen) return null;
 
-  const isSuperAdmin = formData.role === UserRole.SUPER_ADMIN;
+  const isSuperAdmin = formData.role === 'super_admin';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60" aria-modal="true" role="dialog" onMouseDown={onClose}>
@@ -330,11 +316,11 @@ export const UserFormModal: React.FC<{
                 <div>
                   <label htmlFor="role" className="block text-sm font-medium text-text-secondary">Função</label>
                   <select name="role" id="role" value={formData.role} onChange={handleChange} className="w-full px-3 py-2 mt-1 border rounded-md bg-bg-secondary border-border-secondary focus:ring-accent-primary focus:border-accent-primary">
-                    {currentAdminProfile?.role === 'super_admin' && (
-                      <option value={UserRole.SUPER_ADMIN}>Super Admin</option>
-                    )}
-                    <option value={UserRole.ADMIN}>Admin</option>
-                    <option value={UserRole.USER}>Usuário</option>
+                    {Object.values(ROLES).map(roleDef => (
+                      canEditRoles(currentAdminProfile?.role, roleDef.key) && (
+                        <option key={roleDef.key} value={roleDef.key}>{roleDef.label}</option>
+                      )
+                    ))}
                   </select>
                 </div>
               </div>
@@ -346,16 +332,16 @@ export const UserFormModal: React.FC<{
               {activeTab === 'units' && (
                 <div className="pt-2">
                   <h3 className="block text-sm font-medium text-text-secondary">Unidades Atribuídas</h3>
-                  {formData.role === UserRole.SUPER_ADMIN && <p className="text-xs text-text-secondary mt-1">Super Admins têm acesso a todas as unidades.</p>}
+                  {formData.role === 'super_admin' && <p className="text-xs text-text-secondary mt-1">Super Admins têm acesso a todas as unidades.</p>}
                   {isLoadingAssignments ? <div className="mt-2 text-sm text-text-secondary">Carregando...</div> : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2 max-h-32 overflow-y-auto">
                       {allUnits.map(unit => (
-                        <label key={unit.id} className={`flex items-center space-x-2 text-sm text-text-primary ${formData.role === UserRole.SUPER_ADMIN ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}>
+                        <label key={unit.id} className={`flex items-center space-x-2 text-sm text-text-primary ${formData.role === 'super_admin' ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}>
                           <input
                             type="checkbox"
-                            checked={formData.role === UserRole.SUPER_ADMIN || selectedUnits.has(unit.id)}
+                            checked={formData.role === 'super_admin' || selectedUnits.has(unit.id)}
                             onChange={() => handleUnitToggle(unit.id)}
-                            disabled={formData.role === UserRole.SUPER_ADMIN}
+                            disabled={formData.role === 'super_admin'}
                             className="w-4 h-4 rounded text-accent-primary focus:ring-accent-primary disabled:bg-gray-300 disabled:border-gray-400"
                           />
                           <span>{unit.unit_name}</span>
@@ -369,16 +355,16 @@ export const UserFormModal: React.FC<{
               {activeTab === 'modules' && (
                 <div>
                   <h3 className="block text-sm font-medium text-text-secondary mb-2">Módulos Atribuídos por Unidade</h3>
-                  {formData.role === UserRole.SUPER_ADMIN && <p className="text-xs text-text-secondary mt-1 mb-3">Super Admins têm acesso a todos os módulos.</p>}
+                  {formData.role === 'super_admin' && <p className="text-xs text-text-secondary mt-1 mb-3">Super Admins têm acesso a todos os módulos.</p>}
 
-                  {formData.role !== UserRole.SUPER_ADMIN && selectedUnits.size === 0 && (
+                  {formData.role !== 'super_admin' && selectedUnits.size === 0 && (
                     <p className="text-xs text-text-secondary bg-bg-tertiary p-2 rounded-md border border-border-secondary">
                       <Icon name="info" className="inline w-4 h-4 mr-1" />
                       Atribua unidades na aba "Unidades" primeiro.
                     </p>
                   )}
 
-                  {formData.role !== UserRole.SUPER_ADMIN && selectedUnits.size > 0 && (
+                  {formData.role !== 'super_admin' && selectedUnits.size > 0 && (
                     <>
                       {/* Seletor de Unidade */}
                       <div className="mb-3">
@@ -422,7 +408,7 @@ export const UserFormModal: React.FC<{
                                 .map(module => {
                                   const currentUnitModules = modulesByUnit.get(selectedUnitForModules) || new Set();
                                   const isChecked = currentUnitModules.has(module.id);
-                                  const disabled = formData.role === UserRole.SUPER_ADMIN;
+                                  const disabled = formData.role === 'super_admin';
 
                                   // Log para debug
                                   if (module.name === 'Dashboard' || module.name === 'Atendimentos') {

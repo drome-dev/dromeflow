@@ -58,11 +58,13 @@ export const WeekSummary: React.FC<WeekSummaryProps> = ({
             return dispDate === iso;
          });
 
-         const countStatus = (status: string) => disps.filter((dsp: any) =>
+          const isLivreStatus = (s: string | null | undefined) => ['LIVRE','8 horas','6 horas','4 horas manhã','4 horas tarde'].includes(s ?? '');
+          const countStatus = (status: string) => disps.filter((dsp: any) =>
+            (status === 'LIVRE' && (isLivreStatus(dsp.status_manha) || isLivreStatus(dsp.status_tarde))) ||
             dsp.status_manha === status || dsp.status_tarde === status
-         ).length;
+          ).length;
 
-         const livre = countStatus('LIVRE');
+          const livre = disps.filter((dsp: any) => isLivreStatus(dsp.status_manha) || isLivreStatus(dsp.status_tarde)).length;
          const nao = countStatus('NÃO') + countStatus('NAO') + countStatus('NÃO DISPONÍVEL') + countStatus('NÃO DISPONIVEL');
          const cancelou = countStatus('CANCELOU');
          const faltou = countStatus('FALTOU');

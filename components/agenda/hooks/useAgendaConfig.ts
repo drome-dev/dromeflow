@@ -3,6 +3,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../../services/supabaseClient';
 import { saveAgendaSettings } from '../../../services/agenda/agenda.service';
 import { getAgendaErrorMessage } from '../../../services/agenda/agenda.errors';
+import { AGENDA_PERIODS } from '../../../constants/agenda';
+import { MOBILE_STATUS_OPTIONS } from '../constants';
 import type { AgendaDisponibilidade, AgendaProfissional, AgendaSettings, AgendaStatusTurno } from '../../../types';
 
 type AgendaSelectedUnit = {
@@ -159,14 +161,15 @@ export const useAgendaConfig = (selectedUnit: AgendaSelectedUnit | null | undefi
 
       const currentDisp = (configQuery.data?.todasDisponibilidades ?? [])
          .find(d => d.profissional_id === profId && d.data.includes(dateStr));
-      const isFullDay = currentDisp?.periodos?.some((p: string) => p === '8 horas' || p === '6 horas');
+      const prevPeriodos = currentDisp?.periodos || [];
+      const isFullDay = prevPeriodos?.some((p: string) => p === '8 horas' || p === '6 horas');
 
       const updateData: AgendaStatusUpdate = {
          unit_id: selectedUnit.id,
          profissional_id: profId,
          data: dateStr,
          settings_id: configSettingsDraft?.id ?? null,
-         periodos: currentDisp?.periodos || [],
+         periodos: prevPeriodos,
          conflito: false,
          is_manual: true,
       };
@@ -176,16 +179,35 @@ export const useAgendaConfig = (selectedUnit: AgendaSelectedUnit | null | undefi
          updateData.status_tarde = null;
          updateData.periodos = [];
          updateData.is_manual = false;
-      } else if (status === '8 horas' || status === '6 horas' || (isFullDay && ['RESERVA', 'CANCELOU', 'FALTOU', 'LIVRE', 'NÃO'].includes(status))) {
+      } else if ((MOBILE_STATUS_OPTIONS as readonly string[]).includes(status)) {
+         // Admin selected a period option (same as profissionais can choose via AgendaExternaPage)
+         // Derive status_manha/status_tarde consistently with saveDisponibilidades()
+         const periodos = [status];
+         const isNao = periodos.some(p => AGENDA_PERIODS.NAO.includes(p as never));
+         const hasManha = periodos.some(p => AGENDA_PERIODS.MANHA.includes(p as never));
+         const hasTarde = periodos.some(p => AGENDA_PERIODS.TARDE.includes(p as never));
+
+         if (isNao) {
+            updateData.status_manha = 'NÃO';
+            updateData.status_tarde = 'NÃO';
+         } else {
+            if (hasManha) {
+               updateData.status_manha = 'LIVRE';
+            } else if (status === '4 horas tarde') {
+               updateData.status_manha = 'NÃO';
+            }
+
+            if (hasTarde) {
+               updateData.status_tarde = 'LIVRE';
+            } else if (status === '4 horas manhã') {
+               updateData.status_tarde = 'NÃO';
+            }
+         }
+         updateData.periodos = periodos;
+      } else if (isFullDay && ['RESERVA', 'CANCELOU', 'FALTOU', 'LIVRE', 'NÃO'].includes(status)) {
+         // Manual status applied to a full-day entry — apply to both periods
          updateData.status_manha = status as AgendaStatusTurno;
          updateData.status_tarde = status as AgendaStatusTurno;
-         if (status === '8 horas' || status === '6 horas') updateData.periodos = [status];
-      } else if (status === '4 horas manhã') {
-         updateData.status_manha = status as AgendaStatusTurno;
-         updateData.periodos = ['4 horas manhã'];
-      } else if (status === '4 horas tarde') {
-         updateData.status_tarde = status as AgendaStatusTurno;
-         updateData.periodos = ['4 horas tarde'];
       } else if (periodo === 'M') {
          updateData.status_manha = status as AgendaStatusTurno;
       } else {

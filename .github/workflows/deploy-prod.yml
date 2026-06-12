@@ -1,0 +1,70 @@
+name: Deploy PROD
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: |
+          Type "deploy" to confirm production deployment.
+          This will build and upload to dromeflow.com.
+        required: true
+        default: ""
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false  # Never cancel production deploy
+
+env:
+  NODE_VERSION: 20
+
+jobs:
+  validate:
+    name: Validate confirmation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check confirmation input
+        run: |
+          if [ "${{ github.event.inputs.confirm }}" != "deploy" ]; then
+            echo "❌ Cancelled — you must type exactly 'deploy' to confirm."
+            exit 1
+          fi
+          echo "✅ Confirmation validated."
+
+  deploy:
+    name: Build + Deploy to dromeflow.com
+    needs: validate
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://dromeflow.com
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - run: npm ci
+
+      - name: Create .env.production from secrets
+        run: |
+          cat > .env.production << 'ENVEOF'
+          VITE_APP_ENV=production
+          VITE_BASE_DOMAIN=dromeflow.com
+          VITE_AGENDA_DOMAIN=agenda.dromeflow.com
+          VITE_BOT_DOMAIN=bot.dromeflow.com
+          VITE_SUPABASE_URL=${{ secrets.SUPABASE_URL_PROD }}
+          VITE_SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY_PROD }}
+          VITE_META_APP_ID=${{ secrets.VITE_META_APP_ID }}
+          VITE_N8N_WEBHOOK_URL=${{ secrets.VITE_N8N_WEBHOOK_URL }}
+
+          SFTP_HOST=${{ secrets.SFTP_HOST }}
+          SFTP_PORT=65002
+          SFTP_USER=${{ secrets.SFTP_USER }}
+          SFTP_PASSWORD=${{ secrets.SFTP_PASSWORD }}
+          SFTP_DEST=domains/dromeflow.com/public_html
+          ENVEOF
+
+      - name: Execute deploy:prod (build + SFTP upload)
+        run: npm run deploy:prod

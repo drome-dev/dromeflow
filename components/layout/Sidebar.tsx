@@ -175,40 +175,44 @@ const Sidebar: React.FC<SidebarProps> = ({ sidebarOpen, setSidebarOpen }) => {
     setSidebarOpen(false);
   };
 
-  const handleProfileUpdate = async (data: { email?: string; password?: string; full_name?: string }) => {
+  const handleProfileUpdate = async (data: { email?: string; password?: string; full_name?: string; phone?: string }) => {
     if (!profile) return;
 
-    const updates: { email?: string; password?: string; full_name?: string } = {};
+    const updates: { email?: string; password?: string; full_name?: string; phone?: string } = {};
     if (data.email && data.email !== (user?.email || null)) updates.email = data.email;
     if (data.password) updates.password = data.password;
     if (data.full_name && data.full_name !== (profile as any).full_name) updates.full_name = data.full_name;
+    if (data.phone && data.phone !== (profile as any).phone) updates.phone = data.phone;
 
     if (Object.keys(updates).length === 0) {
       setIsProfileModalOpen(false);
       return;
     }
 
-    const { data: updatedProfiles, error } = await supabase
-      .from('profiles')
-      .update(updates)
-      .eq('id', profile.id)
-      .select('*')
-      .single();
+    const { data: rpcResult, error: rpcError } = await supabase.rpc('update_user_v2', {
+      p_user_id: profile.id,
+      p_full_name: updates.full_name || null,
+      p_email: updates.email || null,
+      p_password: updates.password || null,
+      p_phone: updates.phone || null,
+      p_role: null,
+      p_display_name: null,
+      p_unit_ids: null,
+      p_module_ids: null,
+    });
 
-    if (error) {
-      alert(`Falha ao atualizar o perfil: ${error.message}`);
+    if (rpcError || !rpcResult?.success) {
+      alert(`Falha ao atualizar o perfil: ${rpcError?.message || rpcResult?.error || 'Erro desconhecido'}`);
       return;
     }
 
-    // Atualiza armazenamento local e força re-render imediato do Sidebar
+    // Atualiza armazenamento local
     try {
       const storedProfile = localStorage.getItem('userProfile');
       if (storedProfile) {
         const parsed = JSON.parse(storedProfile);
         const merged = { ...parsed, ...updates };
         localStorage.setItem('userProfile', JSON.stringify(merged));
-      } else if (updatedProfiles) {
-        localStorage.setItem('userProfile', JSON.stringify(updatedProfiles));
       }
     } catch (e) {
       console.warn('Falha ao sincronizar localStorage após update de perfil', e);
@@ -579,6 +583,7 @@ const Sidebar: React.FC<SidebarProps> = ({ sidebarOpen, setSidebarOpen }) => {
         onSave={handleProfileUpdate}
         user={user}
         fullNameInitial={(profile as any)?.full_name}
+        phoneInitial={(profile as any)?.phone}
       />
       <WhatsAppConnectionsModal
         isOpen={isWhatsAppModalOpen}

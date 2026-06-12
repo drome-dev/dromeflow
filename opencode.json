@@ -3,9 +3,8 @@
   "mcp": {
     "supabase": {
       "type": "remote",
-      "url": "https://mcp.supabase.com/mcp?project_ref=uframhbsgtxckdxttofo&features=database%2Cdocs%2Cdevelopment%2Cbranching%2Cfunctions",
+      "url": "https://mcp.supabase.com/mcp?project_ref=xivgioxraznqshlbgxdj&features=docs%2Caccount%2Cdatabase%2Cdebugging%2Cdevelopment%2Cfunctions%2Cbranching%2Cstorage",
       "enabled": true
     }
   }
 }
-

@@ -1,4 +1,7 @@
 import { supabase } from '../supabaseClient';
+import { createLogger } from '../utils/log';
+
+const log = createLogger('versions.service');
 
 /**
  * Interface para Versão da Aplicação
@@ -48,7 +51,7 @@ export interface UserVersionUpdate {
  * Cria uma nova versão da aplicação
  */
 export const createVersion = async (version: AppVersion): Promise<AppVersion> => {
-    console.log('[versions.service] Criando versão:', version);
+    log.info('[versions.service] Criando versão', { version });
 
     // Sanitize input
     const { id: _id, created_at: _c, updated_at: _u, ...cleanVersion } = version as any;
@@ -60,7 +63,7 @@ export const createVersion = async (version: AppVersion): Promise<AppVersion> =>
         .maybeSingle();
 
     if (error) {
-        console.error('[versions.service] Erro ao criar versão:', error);
+        log.error('[versions.service] Erro ao criar versão', { error });
         throw error;
     }
 
@@ -68,7 +71,7 @@ export const createVersion = async (version: AppVersion): Promise<AppVersion> =>
         throw new Error('Erro ao confirmar criação do registro (RLS?)');
     }
 
-    console.log('[versions.service] Versão criada:', data);
+    log.info('[versions.service] Versão criada', { version: data });
     return data;
 };
 
@@ -79,7 +82,7 @@ export const updateVersion = async (
     id: string,
     updates: Partial<AppVersion>
 ): Promise<AppVersion> => {
-    console.log('[versions.service] Atualizando versão:', id, updates);
+    log.info('[versions.service] Atualizando versão', { id, updates });
 
     // Sanitize updates: remove protected fields
     const { id: _id, created_at: _c, updated_at: _u, ...cleanUpdates } = updates as any;
@@ -92,17 +95,17 @@ export const updateVersion = async (
         .maybeSingle();
 
     if (error) {
-        console.error('[versions.service] Erro ao atualizar versão:', error);
+        log.error('[versions.service] Erro ao atualizar versão', { error });
         throw error;
     }
 
     if (!data) {
         // Se returnou nulo, indica que 0 linhas foram afetadas (provavelmente RLS)
-        console.error('[versions.service] Update falhou ao afetar linhas. Verifique RLS.');
+        log.error('[versions.service] Update falhou ao afetar linhas. Verifique RLS.');
         throw new Error('Não foi possível salvar as alterações. Verifique se você tem permissões de Super Admin.');
     }
 
-    console.log('[versions.service] Versão atualizada:', data);
+    log.info('[versions.service] Versão atualizada', { version: data });
     return data;
 };
 
@@ -110,7 +113,7 @@ export const updateVersion = async (
  * Deleta uma versão
  */
 export const deleteVersion = async (id: string): Promise<void> => {
-    console.log('[versions.service] Deletando versão:', id);
+    log.info('[versions.service] Deletando versão', { id });
 
     const { error } = await supabase
         .from('app_versions')
@@ -118,18 +121,18 @@ export const deleteVersion = async (id: string): Promise<void> => {
         .eq('id', id);
 
     if (error) {
-        console.error('[versions.service] Erro ao deletar versão:', error);
+        log.error('[versions.service] Erro ao deletar versão', { error });
         throw error;
     }
 
-    console.log('[versions.service] Versão deletada');
+    log.info('[versions.service] Versão deletada');
 };
 
 /**
  * Busca todas as versões
  */
 export const getAllVersions = async (): Promise<AppVersion[]> => {
-    console.log('[versions.service] Buscando todas as versões');
+    log.info('[versions.service] Buscando todas as versões');
 
     const { data, error } = await supabase
         .from('app_versions')
@@ -137,11 +140,11 @@ export const getAllVersions = async (): Promise<AppVersion[]> => {
         .order('release_date', { ascending: false });
 
     if (error) {
-        console.error('[versions.service] Erro ao buscar versões:', error);
+        log.error('[versions.service] Erro ao buscar versões', { error });
         throw error;
     }
 
-    console.log('[versions.service] Versões encontradas:', data?.length);
+    log.info('[versions.service] Versões encontradas: ' + data?.length);
     return data || [];
 };
 
@@ -149,7 +152,7 @@ export const getAllVersions = async (): Promise<AppVersion[]> => {
  * Busca a versão ativa mais recente
  */
 export const getActiveVersion = async (): Promise<AppVersion | null> => {
-    console.log('[versions.service] Buscando versão ativa');
+    log.info('[versions.service] Buscando versão ativa');
 
     const { data, error } = await supabase
         .from('app_versions')
@@ -160,11 +163,11 @@ export const getActiveVersion = async (): Promise<AppVersion | null> => {
         .maybeSingle();
 
     if (error) {
-        console.error('[versions.service] Erro ao buscar versão ativa:', error);
+        log.error('[versions.service] Erro ao buscar versão ativa', { error });
         throw error;
     }
 
-    console.log('[versions.service] Versão ativa:', data?.version || 'nenhuma');
+    log.info('[versions.service] Versão ativa: ' + (data?.version || 'nenhuma'));
     return data;
 };
 
@@ -175,7 +178,7 @@ export const checkUserUpdate = async (
     userId: string,
     versionId: string
 ): Promise<UserVersionUpdate | null> => {
-    console.log('[versions.service] Verificando atualização do usuário:', userId, versionId);
+    log.info('[versions.service] Verificando atualização do usuário', { userId, versionId });
 
     const { data, error } = await supabase
         .from('user_version_updates')
@@ -185,11 +188,11 @@ export const checkUserUpdate = async (
         .maybeSingle();
 
     if (error) {
-        console.error('[versions.service] Erro ao verificar atualização:', error);
+        log.error('[versions.service] Erro ao verificar atualização', { error });
         throw error;
     }
 
-    console.log('[versions.service] Status da atualização:', data ? 'atualizado' : 'pendente');
+    log.info('[versions.service] Status da atualização: ' + (data ? 'atualizado' : 'pendente'));
     return data;
 };
 
@@ -201,7 +204,7 @@ export const recordUserUpdate = async (
     versionId: string,
     dismissed: boolean = false
 ): Promise<void> => {
-    console.log('[versions.service] Registrando atualização:', { userId, versionId, dismissed });
+    log.info('[versions.service] Registrando atualização', { userId, versionId, dismissed });
 
     const { error } = await supabase
         .from('user_version_updates')
@@ -218,29 +221,29 @@ export const recordUserUpdate = async (
         );
 
     if (error) {
-        console.error('[versions.service] Erro ao registrar atualização:', error);
+        log.error('[versions.service] Erro ao registrar atualização', { error });
         throw error;
     }
 
-    console.log('[versions.service] Atualização registrada');
+    log.info('[versions.service] Atualização registrada');
 };
 
 /**
  * Busca estatísticas de adoção de versões
  */
 export const getVersionStats = async (): Promise<VersionStats[]> => {
-    console.log('[versions.service] Buscando estatísticas de adoção');
+    log.info('[versions.service] Buscando estatísticas de adoção');
 
     const { data, error } = await supabase
         .from('version_adoption_stats')
         .select('*');
 
     if (error) {
-        console.error('[versions.service] Erro ao buscar estatísticas:', error);
+        log.error('[versions.service] Erro ao buscar estatísticas', { error });
         throw error;
     }
 
-    console.log('[versions.service] Estatísticas encontradas:', data?.length);
+    log.info('[versions.service] Estatísticas encontradas: ' + data?.length);
     return data || [];
 };
 
@@ -248,7 +251,7 @@ export const getVersionStats = async (): Promise<VersionStats[]> => {
  * Desativa todas as versões ativas (útil antes de ativar uma nova)
  */
 export const deactivateAllVersions = async (): Promise<void> => {
-    console.log('[versions.service] Desativando todas as versões');
+    log.info('[versions.service] Desativando todas as versões');
 
     const { error } = await supabase
         .from('app_versions')
@@ -256,9 +259,9 @@ export const deactivateAllVersions = async (): Promise<void> => {
         .eq('is_active', true);
 
     if (error) {
-        console.error('[versions.service] Erro ao desativar versões:', error);
+        log.error('[versions.service] Erro ao desativar versões', { error });
         throw error;
     }
 
-    console.log('[versions.service] Versões desativadas');
+    log.info('[versions.service] Versões desativadas');
 };

@@ -6,6 +6,9 @@ import { supabase } from '../supabaseClient';
 import { syncUnitClientsFromProcessed } from '../data/clientsDirectory.service';
 import { toSnakeCasePayload, toFrontendRecord } from '../data/processedDataMapper';
 import { DataRecord, UploadMetrics } from '../../types';
+import { createLogger } from '../utils/log';
+
+const log = createLogger('upload.service');
 
 export type RawDataRecordForUpload = Omit<DataRecord, 'repasse' | 'orcamento' | 'NÚMERO'> & { repasse: string | number };
 
@@ -92,7 +95,7 @@ const processMultipleProfessionalsRecords = (records: RawDataRecordForUpload[]):
 // - Primeiro atendimento (por HORARIO) → STATUS = "PENDENTE"
 // - Demais atendimentos → STATUS = "ESPERAR"
 const applyWaitStatusByOrder = (records: DataRecord[]): DataRecord[] => {
-	console.log('[applyWaitStatusByOrder] Processing', records.length, 'records');
+	log.info('[applyWaitStatusByOrder] Processing ' + records.length + ' records');
 
 	// Agrupar registros por (PROFISSIONAL + DATA)
 	const groupedByProfessionalDate = new Map<string, DataRecord[]>();
@@ -107,7 +110,7 @@ const applyWaitStatusByOrder = (records: DataRecord[]): DataRecord[] => {
 		groupedByProfessionalDate.get(key)!.push(record);
 	});
 
-	console.log('[applyWaitStatusByOrder] Grouped into', groupedByProfessionalDate.size, 'professional-date combinations');
+	log.info('[applyWaitStatusByOrder] Grouped into ' + groupedByProfessionalDate.size + ' professional-date combinations');
 
 	// Aplicar regra: Se profissional tem 2+ atendimentos no dia,
 	// ordenar por HORARIO e marcar primeiro como PENDENTE, demais como ESPERAR
@@ -122,25 +125,25 @@ const applyWaitStatusByOrder = (records: DataRecord[]): DataRecord[] => {
 				return horarioA.localeCompare(horarioB);
 			});
 
-			console.log(`[applyWaitStatusByOrder] Processing ${recordsGroup.length} appointments for ${key}`);
+			log.info(`[applyWaitStatusByOrder] Processing ${recordsGroup.length} appointments for ${key}`);
 
 			// Aplicar status baseado na posição
 			recordsGroup.forEach((record, index) => {
 				if (index === 0) {
 					// Primeiro atendimento do dia
 					record.status = 'PENDENTE';
-					console.log(`  → [${record.horario}] ${record.atendimento_id}: PENDENTE (1º)`);
+					log.info(`  → [${record.horario}] ${record.atendimento_id}: PENDENTE (1º)`);
 				} else {
 					// Demais atendimentos
 					record.status = 'ESPERAR';
 					statusChangedCount++;
-					console.log(`  → [${record.horario}] ${record.atendimento_id}: ESPERAR (${index + 1}º)`);
+					log.info(`  → [${record.horario}] ${record.atendimento_id}: ESPERAR (${index + 1}º)`);
 				}
 			});
 		}
 	});
 
-	console.log('[applyWaitStatusByOrder] Changed STATUS to "ESPERAR" for', statusChangedCount, 'records');
+	log.info('[applyWaitStatusByOrder] Changed STATUS to "ESPERAR" for ' + statusChangedCount + ' records');
 	return records;
 };
 
@@ -160,8 +163,8 @@ const removeObsoleteRecords = async (
 	endDate: string,
 	clientesPorBaseNoFile: Map<string, Set<string>>
 ): Promise<number> => {
-	console.log('[removeObsoleteRecords] Checking for obsolete records in range:', startDate, 'to', endDate);
-	console.log('[removeObsoleteRecords] Unique base IDs in file:', clientesPorBaseNoFile.size);
+	log.info('[removeObsoleteRecords] Checking for obsolete records in range: ' + startDate + ' to ' + endDate);
+	log.info('[removeObsoleteRecords] Unique base IDs in file: ' + clientesPorBaseNoFile.size);
 
 	const { data: existingRecords, error: fetchError } = await supabase
 		.from('processed_data')
@@ -171,15 +174,15 @@ const removeObsoleteRecords = async (
 		.lte('data', endDate);
 
 	if (fetchError) {
-		console.error('[removeObsoleteRecords] Error fetching existing records:', fetchError);
+		log.error('[removeObsoleteRecords] Error fetching existing records', { error: fetchError });
 		return 0;
 	}
 	if (!existingRecords || existingRecords.length === 0) {
-		console.log('[removeObsoleteRecords] No existing records found in date range');
+		log.info('[removeObsoleteRecords] No existing records found in date range');
 		return 0;
 	}
 
-	console.log('[removeObsoleteRecords] Found', existingRecords.length, 'existing records in database');
+	log.info('[removeObsoleteRecords] Found ' + existingRecords.length + ' existing records in database');
 
 	// Build map of base IDs to all their DB records (atendimento_id + cliente)
 	const baseToDbRecordsMap = new Map<string, { atendimento_id: string; cliente: string }[]>();
@@ -199,7 +202,7 @@ const removeObsoleteRecords = async (
 		});
 	});
 
-	console.log('[removeObsoleteRecords] Unique base IDs in database:', baseToDbRecordsMap.size);
+	log.info('[removeObsoleteRecords] Unique base IDs in database: ' + baseToDbRecordsMap.size);
 
 	// Find records that exist in DB but NOT in the uploaded file
 	// For each base ID: if base not in file at all → delete all records
@@ -221,11 +224,11 @@ const removeObsoleteRecords = async (
 	});
 
 	if (atendimentosToRemove.length === 0) {
-		console.log('[removeObsoleteRecords] No obsolete records to remove');
+		log.info('[removeObsoleteRecords] No obsolete records to remove');
 		return 0;
 	}
 
-	console.log('[removeObsoleteRecords] Total records to delete:', atendimentosToRemove.length);
+	log.info('[removeObsoleteRecords] Total records to delete: ' + atendimentosToRemove.length);
 
 	const { error: deleteError, count } = await supabase
 		.from('processed_data')
@@ -234,12 +237,12 @@ const removeObsoleteRecords = async (
 		.in('atendimento_id', atendimentosToRemove);
 
 	if (deleteError) {
-		console.error('[removeObsoleteRecords] Error deleting records:', deleteError);
+		log.error('[removeObsoleteRecords] Error deleting records', { error: deleteError });
 		return 0;
 	}
 
 	const deletedCount = count || 0;
-	console.log('[removeObsoleteRecords] Successfully deleted', deletedCount, 'records');
+	log.info('[removeObsoleteRecords] Successfully deleted ' + deletedCount + ' records');
 	return deletedCount;
 };
 
@@ -252,11 +255,11 @@ export const uploadXlsxData = async (
 		return { total: 0, inserted: 0, updated: 0, ignored: 0, deleted: 0 };
 	}
 
-	console.log('[uploadXlsxData] Starting upload for unit:', unitCode, 'with', records.length, 'raw records');
+	log.info('[uploadXlsxData] Starting upload for unit: ' + unitCode + ' with ' + records.length + ' raw records');
 
 	// Processar multi-profissionais e aplicar sufixos
 	let processedRecords = processMultipleProfessionalsRecords(records);
-	console.log('[uploadXlsxData] After multi-professional expansion:', processedRecords.length, 'records');
+	log.info('[uploadXlsxData] After multi-professional expansion: ' + processedRecords.length + ' records');
 
 	// Aplicar lógica de STATUS baseada em ordem cronológica (HORARIO)
 	// Primeiro atendimento do dia → PENDENTE, demais → ESPERAR
@@ -383,13 +386,13 @@ export const uploadXlsxData = async (
 	try {
 		const result = await tryRpcUpload();
 		// Sincroniza base de clientes a partir do processed_data para a unidade
-		try { await syncUnitClientsFromProcessed(unitCode); } catch (e) { console.warn('[upload] syncUnitClients warning:', e); }
+		try { await syncUnitClientsFromProcessed(unitCode); } catch (e) { log.warn('[upload] syncUnitClients warning', { error: e }); }
 		return result;
 	} catch (e: any) {
 		const msg = String(e?.message || '').toLowerCase();
 		if (msg.includes('column "profissional" does not exist')) {
 			const res = await manualFallbackUpload();
-			try { await syncUnitClientsFromProcessed(unitCode); } catch (e) { console.warn('[upload] syncUnitClients warning:', e); }
+			try { await syncUnitClientsFromProcessed(unitCode); } catch (e) { log.warn('[upload] syncUnitClients warning', { error: e }); }
 			return res;
 		}
 		throw e;

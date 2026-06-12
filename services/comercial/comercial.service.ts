@@ -7,6 +7,9 @@
 import { supabase } from '../supabaseClient';
 import type { ComercialCard, ComercialColumn } from '../../types';
 import { startOfTodayISO, startOfWeekISO, startOfMonthISO } from '../utils/dates';
+import { createLogger } from '../utils/log';
+
+const log = createLogger('comercial.service');
 
 export type ComercialPeriodMetrics = { today: number; week: number; month: number };
 
@@ -83,7 +86,7 @@ export const deleteComercialCard = async (id: string) => {
 export const persistStatusOrdering = async (updates: Array<Pick<ComercialCard, 'id' | 'status' | 'position'>>) => {
   if (!updates.length) return;
   
-  console.log('🔄 [COMERCIAL] Persistindo ordenação:', {
+  log.info('🔄 [COMERCIAL] Persistindo ordenação', {
     totalUpdates: updates.length,
     updates: updates.map(u => ({ id: u.id.slice(0, 8), status: u.status, position: u.position }))
   });
@@ -105,10 +108,10 @@ export const persistStatusOrdering = async (updates: Array<Pick<ComercialCard, '
         .eq('id', id);
       
       if (error) {
-        console.error(`❌ ERRO ao atualizar status do card ${id.slice(0, 8)}:`, error);
+        log.error(`❌ ERRO ao atualizar status do card ${id.slice(0, 8)}`, { error });
         throw error;
       }
-      console.log(`✅ Status do card ${id.slice(0, 8)} → "${status}"`);
+      log.info(`✅ Status do card ${id.slice(0, 8)} → "${status}"`);
     }
     
     // 2. Atualiza positions em BATCH (muito mais rápido!)
@@ -125,7 +128,7 @@ export const persistStatusOrdering = async (updates: Array<Pick<ComercialCard, '
       throw new Error(result.error || 'Falha no batch update');
     }
     
-    console.log(`✨ [COMERCIAL] Ordenação persistida! ✅ ${result.updated_count}/${result.total} cards`, {
+    log.info('✨ [COMERCIAL] Ordenação persistida! ✅ ' + result.updated_count + '/' + result.total + ' cards', {
       totalSuccess: result.updated_count,
       totalFailed: result.failed_count
     });
@@ -133,7 +136,7 @@ export const persistStatusOrdering = async (updates: Array<Pick<ComercialCard, '
   } catch (error: any) {
     // Fallback: se batch falhar, tenta método legado
     if (error.message?.includes('batch_update_positions')) {
-      console.warn('⚠️ Batch update não disponível, usando método legado');
+      log.warn('⚠️ Batch update não disponível, usando método legado');
       
       for (const update of updates) {
         const { id, status, position } = update;
@@ -218,7 +221,7 @@ export const triggerComercialWebhook = async (action: string, data: Record<strin
 
     if (error) throw error;
     if (!moduleData?.webhook_url) {
-      console.warn('[ComercialWebhook] Nenhum webhook_url configurado para o módulo comercial');
+      log.warn('[ComercialWebhook] Nenhum webhook_url configurado para o módulo comercial');
       return;
     }
 
@@ -229,9 +232,9 @@ export const triggerComercialWebhook = async (action: string, data: Record<strin
     });
 
     if (!response.ok) {
-      console.error(`[ComercialWebhook] Falha (${response.status}):`, await response.text());
+      log.error(`[ComercialWebhook] Falha (${response.status})`, { responseText: await response.text() });
     }
   } catch (err) {
-    console.error('[ComercialWebhook] Erro ao disparar webhook:', err);
+    log.error('[ComercialWebhook] Erro ao disparar webhook', { error: err });
   }
 };

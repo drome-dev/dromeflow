@@ -105,7 +105,8 @@ export const AgendaWeekSummary: React.FC<AgendaWeekSummaryProps> = ({
       uniqueProfs.forEach(p => {
          const profNome = normalizeName(p.profissional?.nome);
 
-         const hasLivreManual = p.status_manha === 'LIVRE' || p.status_tarde === 'LIVRE';
+          const isLivreStatus = (s: string | null | undefined) => ['LIVRE','8 horas','6 horas','4 horas manhã','4 horas tarde'].includes(s ?? '');
+          const hasLivreManual = isLivreStatus(p.status_manha) || isLivreStatus(p.status_tarde);
          const hasReservaManual = p.status_manha === 'RESERVA' || p.status_tarde === 'RESERVA';
          const hasCancelouManual = p.status_manha === 'CANCELOU' || p.status_tarde === 'CANCELOU';
          const hasFaltouManual = p.status_manha === 'FALTOU' || p.status_tarde === 'FALTOU';

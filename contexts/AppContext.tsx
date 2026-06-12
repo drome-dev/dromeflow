@@ -1,6 +1,9 @@
 import React, { createContext, useState, useContext, ReactNode, useEffect } from 'react';
 import { Unit, Module, PageView } from '../types';
 import { useAuth } from './AuthContext';
+import { createLogger } from '../services/utils/log';
+
+const log = createLogger('AppContext');
 
 interface AppContextType {
   selectedUnit: Unit | null | { id: 'ALL'; unit_name: string; unit_code: 'ALL' };
@@ -143,7 +146,7 @@ export const AppContextProvider: React.FC<{ children: ReactNode }> = ({ children
     const handleUnitChange = (event: CustomEvent) => {
       const unit = event.detail;
       if (unit && unit.id) {
-        console.log('[AppContext] Evento de mudança de unidade recebido:', unit);
+        log.info('[AppContext] Evento de mudança de unidade recebido', { unit });
         setSelectedUnit(unit);
         setHasInitialized(false); // Reset para recarregar módulos
       }
@@ -220,7 +223,7 @@ export const AppContextProvider: React.FC<{ children: ReactNode }> = ({ children
           // Caso contrário, carrega o MELHOR módulo inicial ativo da unidade
           const bestModule = findBestInitialModule(activeModulesForUnit);
           if (bestModule) {
-            console.log('[AppContext] Selecionando melhor módulo inicial:', selectedUnit, bestModule.name);
+            log.info('[AppContext] Selecionando melhor módulo inicial: ' + bestModule.name, { unit: selectedUnit });
             const { view, mod } = resolveTargetView(bestModule);
             setActiveView(view);
             setActiveModule(mod);
@@ -231,13 +234,13 @@ export const AppContextProvider: React.FC<{ children: ReactNode }> = ({ children
           setIsFirstLoad(false);
         } else {
           // Se não há módulos ativos na unidade, vai para welcome
-          console.log('[AppContext] Nenhum módulo ativo para unidade:', selectedUnit);
+          log.info('[AppContext] Nenhum módulo ativo para unidade', { unit: selectedUnit });
           setView('welcome');
           setHasInitialized(true);
           setIsFirstLoad(false);
         }
       } catch (err) {
-        console.error('[AppContext] Erro ao carregar módulos da unidade:', err);
+        log.error('[AppContext] Erro ao carregar módulos da unidade', { error: err });
         setView('welcome');
         setHasInitialized(true);
         setIsFirstLoad(false);
@@ -262,7 +265,7 @@ export const AppContextProvider: React.FC<{ children: ReactNode }> = ({ children
         if (activeModulesForUnit.length > 0) {
           const bestModule = findBestInitialModule(activeModulesForUnit);
           if (bestModule) {
-            console.log('[AppContext] Mudança de unidade - carregando melhor módulo:', bestModule.name);
+            log.info('[AppContext] Mudança de unidade - carregando melhor módulo: ' + bestModule.name);
             const { view, mod } = resolveTargetView(bestModule);
             setActiveView(view);
             setActiveModule(mod);
@@ -270,11 +273,11 @@ export const AppContextProvider: React.FC<{ children: ReactNode }> = ({ children
             setView('welcome');
           }
         } else {
-          console.log('[AppContext] Unidade sem módulos ativos');
+          log.info('[AppContext] Unidade sem módulos ativos');
           setView('welcome');
         }
       } catch (err) {
-        console.error('[AppContext] Erro ao recarregar módulos da unidade:', err);
+        log.error('[AppContext] Erro ao recarregar módulos da unidade', { error: err });
       }
     };
 

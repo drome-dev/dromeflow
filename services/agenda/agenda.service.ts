@@ -429,21 +429,15 @@ export const getProfissionaisLivres = async (
     throw new AgendaServiceError('SUPABASE_ERROR', 'Erro ao buscar profissionais livres.', error);
   }
 
-  // Filtro adicional no JS para garantir exclusividade e limpeza da lista
-  return ((data ?? []) as AgendaDisponibilidade[]).filter(disp => {
-    // Exclui se tiver qualquer impedimento no outro turno (CLIENTE, NÃO, RESERVA, etc)
-    if (
-      AGENDA_BLOCKING_STATUSES.includes(disp.status_manha as never) ||
-      AGENDA_BLOCKING_STATUSES.includes(disp.status_tarde as never)
-    ) {
-      return false;
-    }
-
+// Filtro adicional no JS para garantir que apenas períodos com ao menos um status livre sejam retornados.
+return ((data ?? []) as AgendaDisponibilidade[]).filter(disp => {
+    // Exclui se houver conflito detectado
+    if (disp.conflito) return false;
     const isLivreManha = isFreeAgendaStatus(disp.status_manha);
     const isLivreTarde = isFreeAgendaStatus(disp.status_tarde);
-
+    // Retorna true se houver ao menos um turno livre (inclui 8h/6h/4h manhã/tarde ou 'LIVRE')
     return isLivreManha || isLivreTarde;
-  });
+});
 };
 
 /**
@@ -589,5 +583,71 @@ export const initializeUnitAgenda = async (unitId: string): Promise<void> => {
 
   } catch (err) {
     logger.error('Erro ao inicializar agenda da unidade', { unitId, error: err });
+  }
+};
+
+/**
+ * Busca histórico de eventos de agenda para um profissional.
+ */
+export const getHistoricoProfissional = async (
+  unitId: string,
+  profissionalId: string,
+  limit: number = 200,
+  startDate?: string,
+  endDate?: string
+): Promise<any[]> => {
+  assertValidUuid(unitId, 'Unidade');
+  assertValidUuid(profissionalId, 'Profissional');
+
+  let query = supabase
+    .from('agenda_historico')
+    .select('*')
+    .eq('unit_id', unitId)
+    .eq('profissional_id', profissionalId)
+    .order('evento_data', { ascending: false })
+    .limit(limit);
+
+  if (startDate) query = query.gte('evento_data', startDate);
+  if (endDate) query = query.lte('evento_data', endDate);
+
+  const { data, error } = await query;
+  if (error) {
+    logger.error('Erro ao buscar histórico da agenda', { unitId, profissionalId, error });
+    throw new AgendaServiceError('SUPABASE_ERROR', 'Erro ao buscar histórico da agenda.', error);
+  }
+  return data as any[];
+};
+
+/**
+ * Registra um cancelamento de disponibilidade no histórico.
+ */
+export const cancelDisponibilidade = async (
+  unitId: string,
+  profissionalId: string,
+  dataStr: string,
+  observacao?: string
+): Promise<void> => {
+  assertValidUuid(unitId, 'Unidade');
+  assertValidUuid(profissionalId, 'Profissional');
+  assertValidISODate(dataStr);
+
+  const payload = {
+    unit_id: unitId,
+    profissional_id: profissionalId,
+    evento_data: dataStr,
+    tipo_evento: 'CANCELAMENTO' as const,
+    periodos: [] as string[],
+    status_manha: null,
+    status_tarde: null,
+    observacao: observacao || null,
+    origem: 'PROFISSIONAL_CANCEL',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  };
+
+  const { error } = await supabase.from('agenda_historico').insert([payload]);
+  if (error) {
+    logger.error('Erro ao registrar cancelamento na agenda_historico', { unitId, profissionalId, dataStr, error });
+    throw new AgendaServiceError('SAVE_FAILED', 'Falha ao registrar cancelamento.', error);
   }
 };

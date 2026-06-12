@@ -68,9 +68,20 @@ Affected modules: Pós-Vendas (`pos_vendas`), Dados/Agendamentos (`processed_dat
 - Dual compression: Brotli (`.br`) + Gzip (`.gz`), threshold 10KB
 - Code splitting: `vendor-react` + `vendor-supabase` manual chunks
 
+## Database Safety Rule (CRITICAL)
+
+**NUNCA** execute qualquer operação (consulta, migração, alteração) no banco **Dev/Prod** (`uframhbsgtxckdxttofo`) sem solicitação explícita e confirmação do usuário.
+
+Fluxo obrigatório:
+1. Tudo é feito **primeiro no Local** (`xivgioxraznqshlbgxdj`)
+2. Após confirmado funcionando, migrar para **Dev** (`uframhbsgtxckdxttofo`) para testes
+3. Após testes aprovados, enviar para **Production**
+
+O MCP Supabase (`/.opencode/config.json`) DEVE sempre apontar para o **Local** (`xivgioxraznqshlbgxdj`) por padrão. Só alterar para Dev/Prod com autorização explícita.
+
 ## OpenCode Config
 
-- MCP Supabase server is enabled (read-only): `.opencode/config.json` and root `opencode.json` point to Supabase MCP with schema/database/function access.
+- MCP Supabase server is enabled (read-only): `.opencode/config.json` aponta para o **banco Local** (`xivgioxraznqshlbgxdj`) por padrão.
 - Skill files at `.agents/skills/` for Supabase and Postgres best practices.
 
 ## Phase 6 Cleanup (Do Not Remove Yet)

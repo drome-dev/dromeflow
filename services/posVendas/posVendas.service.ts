@@ -1,5 +1,8 @@
 import { supabase } from '../supabaseClient';
 import type { PosVenda, PosVendaFormData, AtendimentoSearchResult } from '../../types';
+import { createLogger } from '../utils/log';
+
+const log = createLogger('posVendas.service');
 
 /**
  * Busca registros pendentes diretamente de processed_data
@@ -32,7 +35,7 @@ export const fetchPendenteWithProfissional = async (filters?: {
   const { data, error } = await query;
 
   if (error) {
-    console.error('Erro ao buscar pendentes de pos_vendas:', error);
+    log.error('Erro ao buscar pendentes de pos_vendas', { error });
     throw error;
   }
 
@@ -75,7 +78,7 @@ export const fetchPosVendas = async (filters?: {
   const { data, error } = await query;
 
   if (error) {
-    console.error('Erro ao buscar pós-vendas:', error);
+    log.error('Erro ao buscar pós-vendas', { error });
     throw error;
   }
 
@@ -93,7 +96,7 @@ export const getPosVenda = async (id: string): Promise<PosVenda | null> => {
     .single();
 
   if (error) {
-    console.error('Erro ao buscar pós-venda:', error);
+    log.error('Erro ao buscar pós-venda', { error });
     throw error;
   }
 
@@ -122,7 +125,7 @@ export const searchAtendimentos = async (
   const { data, error } = await query;
 
   if (error) {
-    console.error('Erro ao buscar atendimentos:', error);
+    log.error('Erro ao buscar atendimentos', { error });
     throw error;
   }
 
@@ -148,7 +151,7 @@ export const getAtendimentoById = async (atendimentoId: string): Promise<Atendim
     .maybeSingle();
 
   if (error) {
-    console.error('Erro ao buscar atendimento:', error);
+    log.error('Erro ao buscar atendimento', { error });
     return null;
   }
 
@@ -204,7 +207,7 @@ export const createPosVenda = async (data: PosVendaFormData): Promise<PosVenda> 
     .single();
 
   if (error) {
-    console.error('Erro ao criar pós-venda:', error);
+    log.error('Erro ao criar pós-venda', { error });
     throw error;
   }
 
@@ -225,7 +228,7 @@ export const updatePosVenda = async (id: string, data: Partial<PosVendaFormData>
     .single();
 
   if (error) {
-    console.error('Erro ao atualizar pós-venda:', error);
+    log.error('Erro ao atualizar pós-venda', { error });
     throw error;
   }
 
@@ -242,7 +245,7 @@ export const deletePosVenda = async (id: string): Promise<void> => {
     .eq('id', id);
 
   if (error) {
-    console.error('Erro ao deletar pós-venda:', error);
+    log.error('Erro ao deletar pós-venda', { error });
     throw error;
   }
 };
@@ -258,7 +261,7 @@ export const getPosVendasByAtendimento = async (atendimentoId: string): Promise<
     .order('data', { ascending: false });
 
   if (error) {
-    console.error('Erro ao buscar pós-vendas por atendimento:', error);
+    log.error('Erro ao buscar pós-vendas por atendimento', { error });
     throw error;
   }
 
@@ -300,7 +303,7 @@ export const getMetrics = async (filters?: {
   const { data, error } = await query;
 
   if (error) {
-    console.error('Erro ao calcular métricas:', error);
+    log.error('Erro ao calcular métricas', { error });
     throw error;
   }
 

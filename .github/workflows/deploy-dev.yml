@@ -1,0 +1,53 @@
+name: Deploy DEV
+
+on:
+  push:
+    branches: [develop]
+
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: 20
+
+jobs:
+  deploy:
+    name: Build + Deploy to dev.dromeflow.com
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - run: npm ci
+
+      - name: Create .env.dev from secrets
+        run: |
+          cat > .env.dev << 'ENVEOF'
+          VITE_APP_ENV=development
+          VITE_APP_URL=https://dev.dromeflow.com
+          VITE_BASE_DOMAIN=dev.dromeflow.com
+          VITE_SUPABASE_URL=${{ secrets.SUPABASE_URL_DEV }}
+          VITE_SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY_DEV }}
+          SUPABASE_PROJECT_REF=uframhbsgtxckdxttofo
+          SUPABASE_URL=${{ secrets.SUPABASE_URL_DEV }}
+          SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY_DEV }}
+
+          FTP_HOST=${{ secrets.FTP_HOST }}
+          FTP_PORT=21
+          FTP_USER=${{ secrets.FTP_USER }}
+          FTP_PASSWORD=${{ secrets.FTP_PASSWORD }}
+          FTP_DEST=dev
+
+          SFTP_HOST=${{ secrets.SFTP_HOST }}
+          SFTP_PORT=65002
+          SFTP_USER=${{ secrets.SFTP_USER }}
+          SFTP_PASSWORD=${{ secrets.SFTP_PASSWORD }}
+          SFTP_DEST=public_html/dev
+          ENVEOF
+
+      - name: Execute deploy:dev (build + FTP upload)
+        run: npm run deploy:dev

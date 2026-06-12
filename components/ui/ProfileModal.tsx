@@ -5,15 +5,16 @@ import { Icon } from './Icon';
 interface ProfileModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onSave: (data: { email?: string; password?: string; full_name?: string }) => Promise<void>;
+    onSave: (data: { email?: string; password?: string; full_name?: string; phone?: string }) => Promise<void>;
     user: User | null;
-    // Opcional: valor inicial do nome se não vier no objeto user (mantido para compatibilidade futura)
     fullNameInitial?: string;
+    phoneInitial?: string;
 }
 
-const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, onSave, user, fullNameInitial }) => {
+const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, onSave, user, fullNameInitial, phoneInitial }) => {
     const [email, setEmail] = useState('');
     const [fullName, setFullName] = useState('');
+    const [phone, setPhone] = useState('');
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [error, setError] = useState('');
@@ -25,6 +26,7 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, onSave, us
             setEmail(user.email);
         }
         setFullName((user as any)?.full_name || fullNameInitial || '');
+        setPhone((user as any)?.phone || phoneInitial || '');
         // Redefinir estado ao abrir/fechar
         setError('');
         setSuccessMessage('');
@@ -48,7 +50,7 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, onSave, us
             return;
         }
 
-        const dataToUpdate: { email?: string; password?: string; full_name?: string } = {};
+        const dataToUpdate: { email?: string; password?: string; full_name?: string; phone?: string } = {};
         if (email !== user?.email) {
             dataToUpdate.email = email;
         }
@@ -57,6 +59,9 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, onSave, us
         }
         if (fullName && fullName.trim().length > 0 && fullName !== (user as any)?.full_name) {
             dataToUpdate.full_name = fullName.trim();
+        }
+        if (phone && phone !== (user as any)?.phone) {
+            dataToUpdate.phone = phone.trim();
         }
 
         if (Object.keys(dataToUpdate).length === 0) {
@@ -111,6 +116,18 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, onSave, us
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
                             required
+                            className="w-full px-3 py-2 mt-1 border rounded-md bg-bg-secondary border-border-secondary focus:ring-accent-primary focus:border-accent-primary"
+                        />
+                    </div>
+                    <div>
+                        <label htmlFor="profile_phone" className="block text-sm font-medium text-text-secondary">WhatsApp</label>
+                        <input
+                            type="tel"
+                            name="phone"
+                            id="profile_phone"
+                            value={phone}
+                            onChange={(e) => setPhone(e.target.value)}
+                            placeholder="(11) 99999-8888"
                             className="w-full px-3 py-2 mt-1 border rounded-md bg-bg-secondary border-border-secondary focus:ring-accent-primary focus:border-accent-primary"
                         />
                     </div>

@@ -59,6 +59,46 @@ export const AgendaConfiguracoesView: React.FC<AgendaConfiguracoesViewProps> = (
       handleStatusUpdate, handleSaveSettings 
    } = config;
 
+   // -----------------------
+   // Alertas de conflitos de disponibilidade para o dia selecionado
+   // -----------------------
+   const selectedDateIso = formatLocalISO(selectedDate);
+   const dayAlerts: { profName: string; message: string }[] = [];
+   const statusToHours = (status: string | null | undefined): number => {
+      if (!status) return 0;
+      const s = status.toString().toLowerCase();
+      if (s === 'livre') return 8;
+      if (s.includes('8')) return 8;
+      if (s.includes('6')) return 6;
+      if (s.includes('4')) return 4;
+      return 0;
+   };
+   (todasDisponibilidades || []).filter(d => matchDate(d.data, selectedDateIso)).forEach(d => {
+      const profName = d.profissional?.nome || (todasProfissionais?.find(p => p.id === d.profissional_id)?.nome) || 'Profissional';
+      const atendimentosProf = (atendimentosSemana || []).filter(a =>
+         matchName(a.PROFISSIONAL, profName) && matchDate(a.DATA, selectedDateIso)
+      );
+      atendimentosProf.forEach(at => {
+         const horario = at.HORARIO || '';
+         const startHour = Number((horario.split(':')[0] || '0'));
+         const periodHours = Number(at['PERÍODO']?.toString().replace(',', '.') || '0');
+         const isMorning = startHour < 13;
+         const status = isMorning ? d.status_manha : d.status_tarde;
+         const availableHours = statusToHours(status);
+         if (status && status.toUpperCase() === 'NÃO' && periodHours > 0) {
+            dayAlerts.push({
+               profName,
+               message: `Atendimento de ${periodHours}h no período ${isMorning ? 'manhã' : 'tarde'} enquanto a disponibilidade está como NÃO.`
+            });
+         } else if (periodHours > availableHours && availableHours > 0) {
+            dayAlerts.push({
+               profName,
+               message: `Atendimento de ${periodHours}h no período ${isMorning ? 'manhã' : 'tarde'} excede a disponibilidade (${status}).`
+            });
+         }
+      });
+   });
+
    // Helper para toggle de dia no calendário de config
    const toggleDiaVisual = (isoStr: string) => {
       const dias = configSettings.dias_liberados || [];
@@ -198,7 +238,19 @@ export const AgendaConfiguracoesView: React.FC<AgendaConfiguracoesViewProps> = (
                   )}
                </div>
 
-               {/* TABELA DE ÚLTIMOS ENVIOS (Histórico) */}
+                {/* ALERTAS DE CONFLITO DE DISPONIBILIDADE PARA O DIA SELECIONADO */}
+                {dayAlerts.length > 0 && (
+                   <div className="mb-4 space-y-2">
+                      {dayAlerts.map((a, i) => (
+                         <div key={i} className="flex items-center gap-2 bg-amber-100 border border-amber-300 text-amber-800 rounded p-2 text-sm">
+                            <Icon name="AlertTriangle" className="w-4 h-4 flex-shrink-0" />
+                            <span>{a.profName}: {a.message}</span>
+                         </div>
+                      ))}
+                   </div>
+                )}
+
+                {/* TABELA DE ÚLTIMOS ENVIOS (Histórico) */}
                <div className="flex flex-col gap-6 pt-4 mt-8 border-t border-border-secondary/30">
                   <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                      <div className="flex items-center gap-4">
@@ -530,46 +582,50 @@ export const AgendaConfiguracoesView: React.FC<AgendaConfiguracoesViewProps> = (
                                              const disp = todasDisponibilidades.find(d => d.profissional_id === prof.id && matchDate(d.data, wd.iso));
                                              const atsDia = atsSemanaProf.filter(a => matchDate(a.DATA, wd.iso));
 
-                                             const getPeriodStatus = (startH: number, endH: number) => {
-                                                const statusCol = startH < 13 ? 'status_manha' : 'status_tarde';
-                                                const manualStatus = disp?.[statusCol];
+                                              const getPeriodStatus = (startH: number, endH: number) => {
+                                                 const normalizeStatus = (val: string | null | undefined): string | null => {
+                                                    if (!val) return null;
+                                                    const v = val.toUpperCase().trim();
+                                                    if (v.includes('NÃO') || v === 'NAO') return 'NÃO';
+                                                    if (v === '8 HORAS') return 'LIVRE';
+                                                    if (v === '6 HORAS' || v.includes('MANHÃ') || v.includes('TARDE') || v === 'LIVRE') return 'LIVRE';
+                                                    return val;
+                                                 };
 
-                                                if (manualStatus === '') return { label: '—', color: 'bg-bg-tertiary text-text-tertiary' };
-                                                
-                                                const overlapAt = atsDia.find(at => {
-                                                   const [atStH] = (at.HORARIO || '0:0').split(':').map(Number);
-                                                   const dur = parseFloat(at['PERÍODO']?.toString().replace(',', '.') || '1');
-                                                   return atStH < endH && (atStH + dur) > startH;
-                                                });
+                                                 const rawStatus = disp?.[startH < 13 ? 'status_manha' : 'status_tarde'];
+                                                 const manualStatus = normalizeStatus(rawStatus);
 
-                                                if (overlapAt) return { 
-                                                   label: 'CLIENTE', 
-                                                   color: (parseFloat(overlapAt['PERÍODO'] || '0') === 8 ? 'bg-[#1E3A8A]' : 'bg-[#3B82F6]') + ' text-white shadow-sm',
-                                                   tooltip: `${overlapAt.HORARIO} - ${overlapAt.CLIENTE || 'Cliente'} (${overlapAt['SERVIÇO'] || 'Serviço'})`
-                                                };
+                                                 if (!manualStatus) return { label: '—', color: 'bg-bg-tertiary text-text-tertiary' };
 
-                                                if (manualStatus) {
-                                                   // Cores de Disponibilidade (LIVRE)
-                                                   if (manualStatus === '8 horas') {
-                                                      return { label: 'LIVRE', color: 'bg-[#15803D] text-white shadow-sm' };
-                                                   }
-                                                   if (['6 horas', '4 horas manhã', '4 horas tarde', 'LIVRE'].includes(manualStatus)) {
-                                                      return { label: 'LIVRE', color: 'bg-[#4ADE80] text-black shadow-sm' };
-                                                   }
+                                                 const overlapAt = atsDia.find(at => {
+                                                    const [atStH] = (at.HORARIO || '0:0').split(':').map(Number);
+                                                    const dur = parseFloat(at['PERÍODO']?.toString().replace(',', '.') || '1');
+                                                    return atStH < endH && (atStH + dur) > startH;
+                                                 });
 
-                                                   // Status Manuais
-                                                   let color = 'bg-[#F97316] text-black shadow-sm';
-                                                   if (manualStatus === 'FALTOU') color = 'bg-[#EF4444] text-white shadow-sm';
-                                                   else if (manualStatus === 'CANCELOU') color = 'bg-[#F97316] text-white shadow-sm';
-                                                   else if (manualStatus === 'RESERVA') color = 'bg-[#FACC15] text-black shadow-sm';
-                                                   else if (manualStatus === 'NÃO') color = 'bg-[#1A1A1A] text-white shadow-sm';
-                                                   return { label: manualStatus, color };
-                                                }
+                                                 if (overlapAt) return {
+                                                    label: 'CLIENTE',
+                                                    color: (parseFloat(overlapAt['PERÍODO'] || '0') === 8 ? 'bg-[#1E3A8A]' : 'bg-[#3B82F6]') + ' text-white shadow-sm',
+                                                    tooltip: `${overlapAt.HORARIO} - ${overlapAt.CLIENTE || 'Cliente'} (${overlapAt['SERVIÇO'] || 'Serviço'})`
+                                                 };
 
-                                                return { label: '—', color: 'bg-bg-tertiary text-text-tertiary' };
-                                             };
+                                                 if (manualStatus === 'LIVRE') {
+                                                    const isFullDay = disp?.periodos?.some((p: string) => p === '8 horas' || p === '6 horas');
+                                                    if (isFullDay) {
+                                                       return { label: 'LIVRE', color: 'bg-[#15803D] text-white shadow-sm' };
+                                                    }
+                                                    return { label: 'LIVRE', color: 'bg-[#4ADE80] text-black shadow-sm' };
+                                                 }
 
-                                             const mStatus = getPeriodStatus(6, 13);
+                                                 let color = 'bg-[#F97316] text-black shadow-sm';
+                                                 if (manualStatus === 'FALTOU') color = 'bg-[#EF4444] text-white shadow-sm';
+                                                 else if (manualStatus === 'CANCELOU') color = 'bg-[#F97316] text-white shadow-sm';
+                                                 else if (manualStatus === 'RESERVA') color = 'bg-[#FACC15] text-black shadow-sm';
+                                                 else if (manualStatus === 'NÃO') color = 'bg-[#1A1A1A] text-white shadow-sm';
+                                                 return { label: manualStatus, color };
+                                              };
+
+                                              const mStatus = getPeriodStatus(6, 13);
                                              const tStatus = getPeriodStatus(13, 20);
                                              const isUnified = mStatus.label === tStatus.label && mStatus.label !== '—';
 

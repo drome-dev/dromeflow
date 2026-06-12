@@ -1,6 +1,9 @@
 import { supabase } from '../supabaseClient';
 import { DataRecord } from '../../types';
 import { toFrontendRecord, toSnakeCasePayload } from './processedDataMapper';
+import { createLogger } from '../utils/log';
+
+const log = createLogger('dataTable.service');
 
 export const fetchDataTable = async (
   unitCode: string,
@@ -34,7 +37,7 @@ export const fetchDataTable = async (
 
   const { data, error, count } = await query;
   if (error) {
-    console.error('Error in fetchDataTable:', error);
+    log.error('Error in fetchDataTable', { error });
     throw error;
   }
 
@@ -77,7 +80,7 @@ export const fetchDataTableMulti = async (
 
   const { data, error, count } = await query;
   if (error) {
-    console.error('Error in fetchDataTableMulti:', error);
+    log.error('Error in fetchDataTableMulti', { error });
     throw error;
   }
 
@@ -124,12 +127,12 @@ export const fetchDataRecordById = async (id: string): Promise<DataRecord | null
   }
 
   if (fetchError) {
-    console.error("Error fetching record by ID:", fetchError);
+    log.error('Error fetching record by ID', { error: fetchError });
     throw fetchError;
   }
 
   if (!record) {
-    console.warn("Record not found for ID:", id);
+    log.warn('Record not found for ID: ' + id);
     return null;
   }
 
@@ -270,7 +273,7 @@ export const fetchAppointments = async (
     .eq('data', date)
     .order('horario', { ascending: true });
   if (error) {
-    console.error('Erro ao buscar agendamentos:', error);
+    log.error('Erro ao buscar agendamentos', { error });
     throw error;
   }
   return ((data || []) as any[]).map(toFrontendRecord);
@@ -289,7 +292,7 @@ export const fetchAppointmentsMulti = async (
     .eq('data', date)
     .order('horario', { ascending: true });
   if (error) {
-    console.error('Erro ao buscar agendamentos (multi):', error);
+    log.error('Erro ao buscar agendamentos (multi)', { error });
     throw error;
   }
   return ((data || []) as any[]).map(toFrontendRecord);
@@ -310,7 +313,7 @@ export const fetchAppointmentsRange = async (
     .order('data', { ascending: true })
     .order('horario', { ascending: true });
   if (error) {
-    console.error('Erro ao buscar agendamentos (range):', error);
+    log.error('Erro ao buscar agendamentos (range)', { error });
     throw error;
   }
   return ((data || []) as any[]).map(toFrontendRecord);
@@ -335,7 +338,7 @@ export const updateDataRecord = async (
     .single();
 
   if (error) {
-    console.error('Erro ao atualizar registro:', error);
+    log.error('Erro ao atualizar registro', { error });
     throw error;
   }
   return toFrontendRecord(data);
@@ -347,7 +350,7 @@ export const deleteDataRecord = async (recordId: string): Promise<void> => {
     .delete()
     .eq('id', recordId);
   if (error) {
-    console.error('Erro ao deletar registro:', error);
+    log.error('Erro ao deletar registro', { error });
     throw error;
   }
 };
@@ -359,7 +362,7 @@ export const deleteDataRecords = async (recordIds: string[]): Promise<void> => {
     .delete()
     .in('id', recordIds);
   if (error) {
-    console.error('Erro ao deletar registros em lote:', error);
+    log.error('Erro ao deletar registros em lote', { error });
     throw error;
   }
 };
@@ -411,7 +414,7 @@ export const fetchAvailableYearsFromProcessedData = async (unitCode: string | st
     const years = Array.from(yearsSet).sort((a, b) => b - a);
     return years.length > 0 ? years : [new Date().getFullYear()];
   } catch (error) {
-    console.error('Erro ao buscar anos disponíveis:', error);
+    log.error('Erro ao buscar anos disponíveis', { error });
     return [new Date().getFullYear()];
   }
 };
