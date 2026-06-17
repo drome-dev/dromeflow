@@ -217,22 +217,18 @@ export const createPosVenda = async (data: PosVendaFormData): Promise<PosVenda> 
 /**
  * Atualiza um registro existente de pós-venda
  */
-export const updatePosVenda = async (id: string, data: Partial<PosVendaFormData>): Promise<PosVenda> => {
+export const updatePosVenda = async (id: string, data: Partial<PosVendaFormData>): Promise<void> => {
   const dbRecord = mapToDbRecord(data);
 
-  const { data: updatedRecord, error } = await supabase
+  const { error } = await supabase
     .from('pos_vendas')
     .update(dbRecord)
-    .eq('id', id)
-    .select()
-    .single();
+    .eq('id', id);
 
   if (error) {
     log.error('Erro ao atualizar pós-venda', { error });
     throw error;
   }
-
-  return updatedRecord;
 };
 
 /**
