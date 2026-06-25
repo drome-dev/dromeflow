@@ -336,11 +336,12 @@ export const saveDisponibilidades = async (
       firstDate: upsertRows[0]?.data,
     });
 
-    // Voltamos para a string de colunas para garantir total compatibilidade com a versão do supabase-js
+    // Usamos unit_id como chave de conflito pois é sempre NOT NULL e corresponde
+    // à constraint agenda_disp_unit_prof_data_unique da tabela
     const { error } = await supabase
       .from('agenda_disponibilidade')
       .upsert(upsertRows, {
-        onConflict: 'settings_id,profissional_id,data'
+        onConflict: 'unit_id,profissional_id,data'
       });
 
     if (error) {

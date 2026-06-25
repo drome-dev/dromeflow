@@ -56,7 +56,8 @@ export const AgendaConfiguracoesView: React.FC<AgendaConfiguracoesViewProps> = (
       configSettings, setConfigSettings, isSavingConfig, todasProfissionais, todasDisponibilidades,
       profMetricas, loadProfissionalMetrics, activeFilter, setActiveFilter, 
       profSearchTerm, setProfSearchTerm, calendarViewDate, setCalendarViewDate,
-      handleStatusUpdate, handleSaveSettings 
+      handleStatusUpdate, handleSaveSettings,
+      statusUpdateError, clearStatusUpdateError,
    } = config;
 
    // -----------------------
@@ -429,9 +430,22 @@ export const AgendaConfiguracoesView: React.FC<AgendaConfiguracoesViewProps> = (
             </div>
          )}
 
-          {configTab === 'metricas' && (
-             <div className="flex flex-col bg-bg-secondary rounded-xl border border-border-secondary overflow-hidden flex-1 min-h-0">
-                <div className="shrink-0 p-4 bg-bg-tertiary border-b border-border-secondary flex flex-wrap items-center justify-between gap-4">
+           {configTab === 'metricas' && (
+              <div className="flex flex-col bg-bg-secondary rounded-xl border border-border-secondary overflow-hidden flex-1 min-h-0">
+                 {/* Banner de erro de atualização de status */}
+                 {statusUpdateError && (
+                    <div className="shrink-0 mx-4 mt-4 mb-0 flex items-center gap-3 bg-rose-50 dark:bg-rose-900/20 border border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300 rounded-xl px-4 py-3 shadow-sm animate-in fade-in slide-in-from-top-2 duration-300">
+                       <Icon name="AlertTriangle" className="w-5 h-5 flex-shrink-0" />
+                       <p className="text-[11px] font-bold flex-1">{statusUpdateError}</p>
+                       <button
+                          onClick={clearStatusUpdateError}
+                          className="p-1 hover:bg-rose-200 dark:hover:bg-rose-800/50 rounded-lg transition-colors cursor-pointer"
+                       >
+                          <Icon name="X" className="w-4 h-4" />
+                       </button>
+                    </div>
+                 )}
+                 <div className="shrink-0 p-4 bg-bg-tertiary border-b border-border-secondary flex flex-wrap items-center justify-between gap-4">
                    <div className="flex items-center gap-2">
                       {(['TODOS', 'RESERVA', 'LIVRE', 'NÃO', 'FALTOU', 'CANCELOU'] as const).map(f => (
                          <button

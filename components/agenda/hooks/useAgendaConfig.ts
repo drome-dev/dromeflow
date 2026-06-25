@@ -58,6 +58,7 @@ export const useAgendaConfig = (selectedUnit: AgendaSelectedUnit | null | undefi
    const [activeFilter, setActiveFilter] = useState('TODOS');
    const [profSearchTerm, setProfSearchTerm] = useState('');
    const [calendarViewDate, setCalendarViewDate] = useState(new Date());
+   const [statusUpdateError, setStatusUpdateError] = useState<string | null>(null);
 
    const enabled = Boolean(selectedUnit?.id && selectedUnit.id !== 'ALL');
 
@@ -120,11 +121,14 @@ export const useAgendaConfig = (selectedUnit: AgendaSelectedUnit | null | undefi
       mutationFn: async (updateData: AgendaStatusUpdate) => {
          const { error } = await supabase
             .from('agenda_disponibilidade')
-            .upsert(updateData, { onConflict: 'settings_id,profissional_id,data' });
+            .upsert(updateData, { onConflict: 'unit_id,profissional_id,data' });
 
          if (error) throw error;
       },
       onSuccess: invalidateConfig,
+      onError: () => {
+         // O erro é tratado no handleStatusUpdate com try/catch para feedback visual
+      },
    });
 
    const settingsMutation = useMutation({
@@ -168,7 +172,10 @@ export const useAgendaConfig = (selectedUnit: AgendaSelectedUnit | null | undefi
          unit_id: selectedUnit.id,
          profissional_id: profId,
          data: dateStr,
-         settings_id: configSettingsDraft?.id ?? null,
+         // Preserva o settings_id original do registro existente para manter o vínculo
+         // com a versão da agenda que a profissional respondeu. Se não houver registro
+         // existente, usa o settings atual (draft).
+         settings_id: currentDisp?.settings_id ?? configSettingsDraft?.id ?? null,
          periodos: prevPeriodos,
          conflito: false,
          is_manual: true,
@@ -214,7 +221,13 @@ export const useAgendaConfig = (selectedUnit: AgendaSelectedUnit | null | undefi
          updateData.status_tarde = status as AgendaStatusTurno;
       }
 
-      await statusMutation.mutateAsync(updateData);
+      try {
+         await statusMutation.mutateAsync(updateData);
+         setStatusUpdateError(null);
+      } catch (err) {
+         const msg = getAgendaErrorMessage(err, 'Erro ao atualizar status de disponibilidade.');
+         setStatusUpdateError(msg);
+      }
    };
 
    const loadProfissionalMetrics = async (profId: string, profNome: string) => {
@@ -256,6 +269,8 @@ export const useAgendaConfig = (selectedUnit: AgendaSelectedUnit | null | undefi
       calendarViewDate, setCalendarViewDate,
       handleStatusUpdate,
       handleSaveSettings,
-      refreshConfig: invalidateConfig
+      refreshConfig: invalidateConfig,
+      statusUpdateError,
+      clearStatusUpdateError: () => setStatusUpdateError(null),
    };
 };
