@@ -49,7 +49,7 @@ const AgendaPage: React.FC = () => {
          {/* HEADER */}
          <header className="shrink-0 bg-bg-secondary border-b border-border-secondary p-4 grid grid-cols-3 items-center z-10">
             <div className="flex items-center gap-4">
-               <h1 className="text-2xl font-bold text-text-primary">Agenda</h1>
+               <h1 className="text-2xl font-bold text-purple-500">Agenda</h1>
             </div>
 
             <div className="flex justify-center">

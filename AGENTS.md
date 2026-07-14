@@ -77,11 +77,24 @@ Fluxo obrigatório:
 2. Após confirmado funcionando, migrar para **Dev** (`uframhbsgtxckdxttofo`) para testes
 3. Após testes aprovados, enviar para **Production**
 
-O MCP Supabase (`/.opencode/config.json`) DEVE sempre apontar para o **Local** (`xivgioxraznqshlbgxdj`) por padrão. Só alterar para Dev/Prod com autorização explícita.
+## MCP Access Rule (CRITICAL)
 
-## OpenCode Config
+Há **dois** servidores MCP configurados em `.opencode/config.json`:
 
-- MCP Supabase server is enabled (read-only): `.opencode/config.json` aponta para o **banco Local** (`xivgioxraznqshlbgxdj`) por padrão.
+| Server | Project Ref | Uso |
+|--------|-------------|-----|
+| `supabase-local` | `xivgioxraznqshlbgxdj` | Desenvolvimento local (localhost) |
+| `supabase-dev` | `uframhbsgtxckdxttofo` | Homologação/Dev |
+
+**SEMPRE** que uma tarefa exigir acesso ao banco via MCP (consultas, schema, migrações, etc.):
+1. **Pergunte ao usuário** qual projeto ele quer acessar: **Local** ou **Dev**
+2. Use o servidor MCP correspondente com base na resposta
+3. Se o usuário não especificar, **padrão é Local** (`supabase-local`)
+
+Ambos usam o mesmo token de autenticação (`SUPABASE_ACCESS_TOKEN`).
+
+## Skills
+
 - Skill files at `.agents/skills/` for Supabase and Postgres best practices.
 
 ## Phase 6 Cleanup (Do Not Remove Yet)

@@ -205,7 +205,7 @@ export const UserFormModal: React.FC<{
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: normalizeRole(value) }));
+    setFormData(prev => ({ ...prev, [name]: name === 'role' ? normalizeRole(value) : value }));
   };
 
   const handleUnitToggle = (unitId: string) => {
