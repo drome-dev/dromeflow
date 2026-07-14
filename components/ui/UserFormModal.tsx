@@ -19,10 +19,11 @@ export const UserFormModal: React.FC<{
 	isOpen: boolean;
 	onClose: () => void;
 	onSave: (user: UserDataPayload) => void;
+	onDelete?: (userId: string) => void | Promise<void>;
 	user: FullUser | null;
 	currentAdminProfile?: Profile | null;
 	forceUnitId?: string;
-}> = ({ isOpen, onClose, onSave, user, currentAdminProfile, forceUnitId }) => {
+}> = ({ isOpen, onClose, onSave, onDelete, user, currentAdminProfile, forceUnitId }) => {
 	const [formData, setFormData] = useState({
 		full_name: '',
 		email: '',
@@ -36,6 +37,7 @@ export const UserFormModal: React.FC<{
   const [selectedUnits, setSelectedUnits] = useState<Set<string>>(new Set());
   const [selectedModules, setSelectedModules] = useState<Set<string>>(new Set());
   const [isLoadingAssignments, setIsLoadingAssignments] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [readOnlyModuleIds, setReadOnlyModuleIds] = useState<Set<string>>(new Set());
   const [activeTab, setActiveTab] = useState<'dados' | 'units' | 'modules'>('dados');
   const [allModulesCache, setAllModulesCache] = useState<Module[]>([]);
@@ -242,6 +244,17 @@ export const UserFormModal: React.FC<{
     });
   };
 
+  const handleDelete = async () => {
+    if (!user || !onDelete) return;
+    setIsDeleting(true);
+    try {
+      await onDelete(user.id);
+      onClose();
+    } catch {
+      setIsDeleting(false);
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.full_name || !formData.email || (!user && !formData.password)) {
@@ -443,6 +456,11 @@ export const UserFormModal: React.FC<{
           )}
 
           <div className="flex justify-end pt-2 space-x-3 sticky bottom-0 bg-bg-secondary">
+            {user && onDelete && (
+              <button type="button" onClick={handleDelete} disabled={isDeleting} className="px-4 py-2 text-sm font-medium text-white bg-danger hover:bg-danger/80 rounded-md mr-auto disabled:opacity-50">
+                {isDeleting ? 'Excluindo...' : 'Excluir'}
+              </button>
+            )}
             <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium border rounded-md text-text-secondary border-border-secondary hover:bg-bg-tertiary">Cancelar</button>
             <button type="submit" className="px-4 py-2 text-sm font-medium text-white border border-transparent rounded-md bg-accent-primary hover:bg-accent-secondary">Salvar</button>
           </div>

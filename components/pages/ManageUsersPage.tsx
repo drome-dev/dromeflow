@@ -363,6 +363,7 @@ const ManageUsersPage: React.FC = () => {
         isOpen={isModalOpen}
         onClose={handleCloseModal}
         onSave={handleSaveUser}
+        onDelete={handleDeleteUser}
         user={editingUser}
         currentAdminProfile={profile}
       />
