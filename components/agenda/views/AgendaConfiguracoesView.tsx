@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Icon } from '../../ui/Icon';
 import { formatLocalISO, matchDate, matchName } from '../helpers';
 import { STATUS_OPTIONS, STATUS_LABELS, PERIODOS_MANHA, PERIODOS_TARDE, PERIODOS_NAO, MOBILE_STATUS_OPTIONS, StatusOption } from '../constants';
+import { deleteProfissionalDisponibilidade } from '../../../services/agenda/agenda.service';
 
 interface AgendaConfiguracoesViewProps {
    config: any;
@@ -59,6 +60,34 @@ export const AgendaConfiguracoesView: React.FC<AgendaConfiguracoesViewProps> = (
       handleStatusUpdate, handleSaveSettings,
       statusUpdateError, clearStatusUpdateError,
    } = config;
+
+   // -----------------------
+   // Handler para excluir disponibilidade da profissional (libera para reenvio)
+   // -----------------------
+   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+   const handleDeleteEnvio = async (profissionalId: string, profissionalNome: string) => {
+      if (!selectedUnit?.id || selectedUnit.id === 'ALL' || !configSettings?.id) return;
+
+      const confirmado = window.confirm(
+         `Tem certeza que deseja excluir a agenda de "${profissionalNome}"?\n\nIsso vai liberar a profissional para enviar uma nova disponibilidade.`
+      );
+      if (!confirmado) return;
+
+      setDeletingId(profissionalId);
+      try {
+         await deleteProfissionalDisponibilidade(selectedUnit.id, profissionalId, configSettings.id);
+         // Recarrega os dados da configuração para refletir a exclusão
+         if (typeof config.refreshConfig === 'function') {
+            await config.refreshConfig();
+         }
+      } catch (err: unknown) {
+         const msg = err instanceof Error ? err.message : 'Erro ao excluir disponibilidade.';
+         alert(msg);
+      } finally {
+         setDeletingId(null);
+      }
+   };
 
    // -----------------------
    // Alertas de conflitos de disponibilidade para o dia selecionado
@@ -319,110 +348,133 @@ export const AgendaConfiguracoesView: React.FC<AgendaConfiguracoesViewProps> = (
                               <div className="w-[280px] shrink-0 px-3 text-[10px] font-bold uppercase tracking-wider text-text-tertiary flex items-center">
                                  Profissional
                               </div>
-                              <div className="flex-1 flex border-l border-border-secondary/40">
-                                 {weekDatesMap.map((wd) => {
-                                    const dayName = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB'][wd.date.getDay()];
-                                    const isToday = wd.iso === formatLocalISO(new Date());
-                                    return (
-                                       <div key={wd.iso} className={`flex-1 flex flex-col items-center justify-center border-r border-border-secondary/40 py-1 transition-all ${isToday ? 'bg-accent-primary/5' : ''}`}>
-                                          <span className={`text-[10px] font-bold uppercase ${isToday ? 'text-accent-primary' : 'text-text-tertiary'}`}>
-                                             {dayName} {wd.date.getDate().toString().padStart(2, '0')}/{(wd.date.getMonth() + 1).toString().padStart(2, '0')}
-                                          </span>
-                                       </div>
-                                    );
-                                 })}
-                                 <div className="w-[150px] shrink-0 text-[10px] font-bold uppercase tracking-wider text-text-tertiary text-center border-l border-border-secondary/40 bg-bg-tertiary/40 flex items-center justify-center">
-                                    Atualizado
-                                 </div>
-                              </div>
+                               <div className="flex-1 flex border-l border-border-secondary/40">
+                                  {(() => {
+                                     // Usa os dias liberados como colunas, ou fallback para a semana do calendário
+                                     const hasLiberated = configSettings?.dias_liberados?.length > 0;
+                                     const headerDates = hasLiberated
+                                        ? [...configSettings.dias_liberados].sort().map((iso: string) => {
+                                             const d = new Date(iso + 'T12:00:00');
+                                             return { iso, date: d };
+                                          })
+                                        : weekDatesMap;
+                                     return headerDates.map((wd: { iso: string; date: Date }) => {
+                                        const dayName = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB'][wd.date.getDay()];
+                                        const isToday = wd.iso === formatLocalISO(new Date());
+                                        return (
+                                           <div key={wd.iso} className={`flex-1 flex flex-col items-center justify-center border-r border-border-secondary/40 py-1 transition-all ${isToday ? 'bg-accent-primary/5' : ''}`}>
+                                              <span className={`text-[10px] font-bold uppercase ${isToday ? 'text-accent-primary' : 'text-text-tertiary'}`}>
+                                                 {dayName} {wd.date.getDate().toString().padStart(2, '0')}/{(wd.date.getMonth() + 1).toString().padStart(2, '0')}
+                                              </span>
+                                           </div>
+                                        );
+                                     });
+                                  })()}
+                                  <div className="w-[150px] shrink-0 text-[10px] font-bold uppercase tracking-wider text-text-tertiary text-center border-l border-border-secondary/40 bg-bg-tertiary/40 flex items-center justify-center">
+                                     Atualizado
+                                  </div>
+                               </div>
                            </div>
 
-                           <div className="flex flex-col p-2 gap-1 px-4">
-                              {(() => {
-                                 const weekDates = weekDatesMap.map(wd => wd.iso);
-                                 const formatStatus = (val: string) => {
-                                     if (!val) return null;
-                                     const v = val.toUpperCase();
-                                     if (v.includes('8 HORAS')) return '8 HORAS';
-                                     if (v.includes('6 HORAS')) return '6 HORAS';
-                                     if (v.includes('MANHÃ')) return '4H MANHÃ';
-                                     if (v.includes('TARDE')) return '4H TARDE';
-                                     if (v.includes('NÃO') || v.includes('NAO')) return 'NÃO DISPONÍVEL';
-                                     return val;
-                                  };
+                            <div className="flex flex-col p-2 gap-1 px-4">
+                               {(() => {
+                                  // Usa dias liberados como colunas, ou fallback para a semana do calendário
+                                  const liberated = (configSettings?.dias_liberados || []).filter(Boolean).sort() as string[];
+                                  const displayDates = liberated.length > 0 ? liberated : weekDatesMap.map(wd => wd.iso);
+                                  
+                                  const formatStatus = (val: string) => {
+                                      if (!val) return null;
+                                      const v = val.toUpperCase();
+                                      if (v.includes('8 HORAS')) return '8 HORAS';
+                                      if (v.includes('6 HORAS')) return '6 HORAS';
+                                      if (v.includes('MANHÃ')) return '4H MANHÃ';
+                                      if (v.includes('TARDE')) return '4H TARDE';
+                                      if (v.includes('NÃO') || v.includes('NAO')) return 'NÃO DISPONÍVEL';
+                                      return val;
+                                   };
 
-                                 const professionalMap: Record<string, any> = {};
-                                 (todasDisponibilidades || []).forEach(d => {
-                                    const entryDate = typeof d.data === 'string' ? d.data.split('T')[0] : '';
-                                    if (!weekDates.includes(entryDate)) return;
+                                  const professionalMap: Record<string, any> = {};
+                                  (todasDisponibilidades || []).forEach(d => {
+                                     const entryDate = typeof d.data === 'string' ? d.data.split('T')[0] : '';
+                                     if (!displayDates.includes(entryDate)) return;
 
-                                    if (!professionalMap[d.profissional_id]) {
-                                       const profRef = todasProfissionais.find(p => p.id === d.profissional_id);
-                                       if (!profRef && !d.profissional?.nome) return;
+                                     if (!professionalMap[d.profissional_id]) {
+                                        const profRef = todasProfissionais.find(p => p.id === d.profissional_id);
+                                        if (!profRef && !d.profissional?.nome) return;
 
-                                       professionalMap[d.profissional_id] = {
-                                          id: d.profissional_id,
-                                          nome: profRef?.nome || d.profissional?.nome || '—',
-                                          habilidade: profRef?.habilidade || '—',
-                                          envios: {},
-                                          last_created: d.created_at
-                                       };
-                                    }
-                                    const originalData = d.selecao_real || 
-                                                         ((d.periodos && d.periodos.length > 0) ? d.periodos.join(', ') : 
-                                                         (d.status_manha && d.status_tarde && d.status_manha !== d.status_tarde 
-                                                            ? `${d.status_manha} / ${d.status_tarde}` 
-                                                            : (d.status_manha || d.status_tarde || '—')));
-                                    professionalMap[d.profissional_id].envios[entryDate] = originalData;
-                                    if (new Date(d.created_at || 0) > new Date(professionalMap[d.profissional_id].last_created || 0)) {
-                                       professionalMap[d.profissional_id].last_created = d.created_at;
-                                    }
-                                 });
+                                        professionalMap[d.profissional_id] = {
+                                           id: d.profissional_id,
+                                           nome: profRef?.nome || d.profissional?.nome || '—',
+                                           habilidade: profRef?.habilidade || '—',
+                                           envios: {},
+                                           last_created: d.created_at
+                                        };
+                                     }
+                                     const originalData = d.selecao_real || 
+                                                          ((d.periodos && d.periodos.length > 0) ? d.periodos.join(', ') : 
+                                                          (d.status_manha && d.status_tarde && d.status_manha !== d.status_tarde 
+                                                             ? `${d.status_manha} / ${d.status_tarde}` 
+                                                             : (d.status_manha || d.status_tarde || '—')));
+                                     professionalMap[d.profissional_id].envios[entryDate] = originalData;
+                                     if (new Date(d.created_at || 0) > new Date(professionalMap[d.profissional_id].last_created || 0)) {
+                                        professionalMap[d.profissional_id].last_created = d.created_at;
+                                     }
+                                  });
 
-                                 const rows = Object.values(professionalMap)
-                                    .filter((p: any) => !profSearchTerm || p.nome.toLowerCase().includes(profSearchTerm.toLowerCase()))
-                                    .sort((a, b) => a.nome.localeCompare(b.nome));
+                                  const rows = Object.values(professionalMap)
+                                     .filter((p: any) => !profSearchTerm || p.nome.toLowerCase().includes(profSearchTerm.toLowerCase()))
+                                     .sort((a, b) => a.nome.localeCompare(b.nome));
 
-                                 if (rows.length === 0) return (
-                                    <div className="py-20 text-center bg-bg-primary rounded-2xl border border-dashed border-border-secondary/40 my-4 mx-2">
-                                       <Icon name="Inbox" className="w-12 h-12 mx-auto mb-4 opacity-10" />
-                                       <p className="text-xs font-black uppercase tracking-widest text-text-tertiary opacity-30">Nenhum registro sincronizado</p>
-                                    </div>
-                                 );
+                                  if (rows.length === 0) return (
+                                     <div className="py-20 text-center bg-bg-primary rounded-2xl border border-dashed border-border-secondary/40 my-4 mx-2">
+                                        <Icon name="Inbox" className="w-12 h-12 mx-auto mb-4 opacity-10" />
+                                        <p className="text-xs font-black uppercase tracking-widest text-text-tertiary opacity-30">Nenhum registro sincronizado</p>
+                                     </div>
+                                  );
 
-                                 return rows.map((row: any) => (
-                                    <div key={row.id} className="group bg-bg-primary rounded-xl border border-border-primary hover:border-border-secondary shadow-sm transition-all duration-200 h-10 flex relative z-0">
-                                       <div className="w-[280px] shrink-0 border-r border-border-secondary/40 py-1 px-3 flex flex-col justify-center sticky left-0 z-10 bg-bg-primary rounded-l-xl group-hover:bg-bg-tertiary/50 transition-colors">
-                                          <span className="font-bold text-xs truncate text-text-primary">{row.nome}</span>
-                                          <span className="text-[9px] uppercase truncate text-text-tertiary">{row.habilidade}</span>
-                                       </div>
-                                       <div className="flex-1 flex border-l border-border-secondary/40 items-stretch">
-                                          {weekDates.map(date => {
-                                             const status = formatStatus(row.envios[date]);
-                                             const isToday = date === formatLocalISO(new Date());
-                                             return (
-                                                <div key={date} className={`flex-1 flex items-center justify-center p-1 border-r border-border-secondary/40 ${isToday ? 'bg-accent-primary/5' : ''}`}>
-                                                   {status ? (
-                                                      <span className={`w-full h-full flex items-center justify-center rounded-lg text-[8px] font-black uppercase tracking-tighter transition-all group-hover:scale-[1.02] px-1 text-center leading-none 
-                                                         ${status === 'NÃO DISPONÍVEL' || status.includes('NÃO') ? 'bg-[#1A1A1A] text-white shadow-sm' : 
-                                                           status === '8 HORAS' ? 'bg-[#15803D] text-white shadow-sm' : 
-                                                           status === '6 HORAS' || status.includes('LIVRE') ? 'bg-[#4ADE80] text-black shadow-sm' : 
-                                                           'bg-accent-primary text-white shadow-sm'}`}>
-                                                         {status}
-                                                      </span>
-                                                   ) : <span className="text-text-tertiary opacity-10 text-[11px]">—</span>}
-                                                </div>
-                                             );
-                                          })}
-                                          <div className="w-[150px] shrink-0 flex flex-col items-end justify-center px-4 border-l border-border-secondary/40 bg-bg-tertiary/20 group-hover:bg-accent-primary/5 transition-colors">
-                                             <span className="text-[11px] font-black text-text-primary">{row.last_created ? new Date(row.last_created).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—'}</span>
-                                             <span className="text-[9px] font-bold text-text-tertiary italic">{row.last_created ? new Date(row.last_created).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—'}</span>
-                                          </div>
-                                       </div>
-                                    </div>
-                                 ));
-                              })()}
-                           </div>
+                                  return rows.map((row: any) => (
+                                     <div key={row.id} className="group bg-bg-primary rounded-xl border border-border-primary hover:border-border-secondary shadow-sm transition-all duration-200 h-10 flex relative z-0">
+                                        <div className="w-[280px] shrink-0 border-r border-border-secondary/40 py-1 px-3 flex flex-col justify-center sticky left-0 z-10 bg-bg-primary rounded-l-xl group-hover:bg-bg-tertiary/50 transition-colors">
+                                           <span className="font-bold text-xs truncate text-text-primary">{row.nome}</span>
+                                           <span className="text-[9px] uppercase truncate text-text-tertiary">{row.habilidade}</span>
+                                        </div>
+                                        <div className="flex-1 flex border-l border-border-secondary/40 items-stretch">
+                                           {displayDates.map(date => {
+                                              const status = formatStatus(row.envios[date]);
+                                              const isToday = date === formatLocalISO(new Date());
+                                              return (
+                                                 <div key={date} className={`flex-1 flex items-center justify-center p-1 border-r border-border-secondary/40 ${isToday ? 'bg-accent-primary/5' : ''}`}>
+                                                    {status ? (
+                                                       <span className={`w-full h-full flex items-center justify-center rounded-lg text-[8px] font-black uppercase tracking-tighter transition-all group-hover:scale-[1.02] px-1 text-center leading-none 
+                                                          ${status === 'NÃO DISPONÍVEL' || status.includes('NÃO') ? 'bg-[#1A1A1A] text-white shadow-sm' : 
+                                                            status === '8 HORAS' ? 'bg-[#15803D] text-white shadow-sm' : 
+                                                            status === '6 HORAS' || status.includes('LIVRE') ? 'bg-[#4ADE80] text-black shadow-sm' : 
+                                                            'bg-accent-primary text-white shadow-sm'}`}>
+                                                          {status}
+                                                       </span>
+                                                    ) : <span className="text-text-tertiary opacity-10 text-[11px]">—</span>}
+                                                 </div>
+                                              );
+                                           })}
+                                            <div className="w-[150px] shrink-0 flex items-center gap-1 px-2 border-l border-border-secondary/40 bg-bg-tertiary/20 group-hover:bg-accent-primary/5 transition-colors">
+                                               <button
+                                                  onClick={() => handleDeleteEnvio(row.id, row.nome)}
+                                                  disabled={deletingId === row.id}
+                                                  className="p-1 rounded-lg text-text-tertiary hover:text-red-500 hover:bg-red-500/10 transition-all opacity-0 group-hover:opacity-100 disabled:opacity-30 cursor-pointer shrink-0"
+                                                  title="Excluir agenda — libera profissional para reenvio"
+                                               >
+                                                  <Icon name={deletingId === row.id ? 'Loader' : 'Trash2'} className={`w-3.5 h-3.5 ${deletingId === row.id ? 'animate-spin' : ''}`} />
+                                               </button>
+                                               <div className="flex flex-col items-end justify-center flex-1 min-w-0">
+                                                  <span className="text-[11px] font-black text-text-primary truncate w-full text-right">{row.last_created ? new Date(row.last_created).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—'}</span>
+                                                  <span className="text-[9px] font-bold text-text-tertiary italic truncate w-full text-right">{row.last_created ? new Date(row.last_created).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—'}</span>
+                                               </div>
+                                            </div>
+                                        </div>
+                                     </div>
+                                  ));
+                               })()}
+                            </div>
                         </div>
                      </div>
                   </div>

@@ -87,10 +87,12 @@ export const useAgendaConfig = (selectedUnit: AgendaSelectedUnit | null | undefi
                .eq('unit_id', selectedUnit.id)
                .or('status.ilike.ativo,status.ilike.ativa,status.is.null')
                .order('nome'),
-            supabase
-               .from('agenda_disponibilidade')
-               .select('*, profissional:profissionais(id, nome, whatsapp, habilidade, status, unit_id)')
-               .eq('unit_id', selectedUnit.id),
+             supabase
+                .from('agenda_disponibilidade')
+                .select('*, profissional:profissionais(id, nome, whatsapp, habilidade, status, unit_id)')
+                .eq('unit_id', selectedUnit.id)
+                .order('data', { ascending: false })
+                .limit(10000),
          ]);
 
          if (settingsResult.error) throw settingsResult.error;

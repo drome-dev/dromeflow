@@ -47,6 +47,21 @@ SaaS de gestão para franquias de limpeza. React 19 + TypeScript + Vite + Supaba
 
 Affected modules: Pós-Vendas (`pos_vendas`), Dados/Agendamentos (`processed_data`), Dashboard (multiple tables).
 
+## Supabase Query Row Limit Rule
+
+**SEMPRE** adicione `.limit(N)` em qualquer query `supabase.from(...).select(...)` que possa retornar mais de 1000 linhas. O Supabase PostgREST tem **limite padrão de 1000 linhas** quando `limit()` não é especificado — registros além desse limite são **silenciosamente truncados** sem warning.
+
+**Exemplo do bug** (Jul 2026):
+- Unidade MB Londrina tinha 1392 registros em `agenda_disponibilidade`
+- Query `supabase.from('agenda_disponibilidade').select('*').eq('unit_id', X)` retornava apenas 1000
+- Registros recentes (posição 1001+) nunca apareciam na UI
+- **Solução**: `.order('data', {ascending: false}).limit(10000)` — ordem explícita + limite alto
+
+Regra prática para tabelas com `order`:
+```typescript
+.order('created_at', { ascending: false }).limit(10000)
+```
+
 ## Upload Pipeline
 
 `services/ingestion/upload.service.ts`:

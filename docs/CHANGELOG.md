@@ -2,6 +2,59 @@
 
 Registro de todas as mudanças notáveis no projeto DromeFlow.
 
+## [2026-07-16] - Correção: Agenda não exibia envios de profissionais (limite de query Supabase) 🚀
+
+### 🐛 Bug Corrigido
+
+#### 1. Profissionais enviavam disponibilidade mas não apareciam na Agenda
+- **Sintoma**: Profissionais enviavam a agenda pelo link público, viam "Agenda Enviada", mas o admin não via os registros em **Agenda → Configurações → Últimos Envios** nem na aba **Disponibilidade**.
+- **Diagnóstico**: Unidade MB Londrina com **1392 registros** em `agenda_disponibilidade`. O Supabase PostgREST tem **limite padrão de 1000 linhas** quando não especificado `.limit()`. Os registros mais recentes (posição 1001+) simplesmente não eram retornados pela query.
+- **Causa**: Queries sem `.limit()` explícito nos hooks `useAgendaConfig` e `useAgendaData`.
+
+#### 2. Tabela "Últimos Envios" filtrava pela semana errada
+- **Sintoma**: Mesmo com registros no banco, a tabela "Últimos Envios" ficava vazia.
+- **Diagnóstico**: A tabela usava `weekDates` (semana do calendário) como filtro, mas as profissionais enviam para `dias_liberados` (definido nas configurações). Quando as semanas não coincidiam (ex: calendário na semana 13-19 jul, liberados na semana 20-24 jul), os envios não apareciam.
+- **Causa**: Filtro fixo por semana do calendário no `AgendaConfiguracoesView.tsx`.
+
+### 🔧 Correções Aplicadas
+
+| Arquivo | Mudança |
+|---------|---------|
+| `components/agenda/hooks/useAgendaConfig.ts` | Adicionado `.order('data', {ascending: false}).limit(10000)` na query de `agenda_disponibilidade` |
+| `components/agenda/hooks/useAgendaData.ts` | Adicionado `.order('data', {ascending: false}).limit(10000)` na query de `agenda_disponibilidade` |
+| `components/agenda/views/AgendaConfiguracoesView.tsx` | Tabela "Últimos Envios" agora usa `configSettings.dias_liberados` como colunas (fallback para semana do calendário) |
+
+### 🔍 Detalhes Técnicos
+
+**Problema do limite de 1000 linhas:**
+```typescript
+// ❌ ANTES — sem limit, PostgREST corta em 1000
+supabase.from('agenda_disponibilidade').select('*').eq('unit_id', X)
+
+// ✅ DEPOIS — limit explícito + order para consistência
+supabase.from('agenda_disponibilidade').select('*').eq('unit_id', X).order('data', {ascending: false}).limit(10000)
+```
+
+**Problema do filtro por semana:**
+```typescript
+// ❌ ANTES — filtrava pela semana do calendário
+const weekDates = weekDatesMap.map(wd => wd.iso);
+if (!weekDates.includes(entryDate)) return;
+
+// ✅ DEPOIS — usa dias liberados (fallback para semana do calendário)
+const liberated = (configSettings?.dias_liberados || []).filter(Boolean).sort();
+const displayDates = liberated.length > 0 ? liberated : weekDatesMap.map(wd => wd.iso);
+if (!displayDates.includes(entryDate)) return;
+```
+
+### 📋 Impacto
+- ✅ Envios de profissionais visíveis imediatamente na tabela "Últimos Envios"
+- ✅ Tabela sempre alinhada com os `dias_liberados` da configuração ativa
+- ✅ Fallback seguro: se não houver dias liberados, usa semana do calendário (comportamento anterior)
+- ✅ Performance: ordenação por data descendente + limit alto para consistência
+
+---
+
 ## [2026-04-07] - Webhook Recrutadora & Restauração de Períodos na Agenda 🚀
 
 ### ✨ Novas Funcionalidades / Melhorias

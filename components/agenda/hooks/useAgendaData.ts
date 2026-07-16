@@ -82,10 +82,12 @@ const fetchProfissionaisConfig = async (unitId: string) => {
          .eq('unit_id', unitId)
          .or('status.ilike.ativo,status.ilike.ativa,status.is.null')
          .order('nome'),
-      supabase
-         .from('agenda_disponibilidade')
-         .select('*, profissional:profissionais(id, nome, whatsapp, habilidade, status, unit_id)')
-         .eq('unit_id', unitId),
+       supabase
+          .from('agenda_disponibilidade')
+          .select('*, profissional:profissionais(id, nome, whatsapp, habilidade, status, unit_id)')
+          .eq('unit_id', unitId)
+          .order('data', { ascending: false })
+          .limit(10000),
    ]);
 
    if (profsResult.error) throw profsResult.error;

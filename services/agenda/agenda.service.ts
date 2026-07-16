@@ -652,3 +652,46 @@ export const cancelDisponibilidade = async (
     throw new AgendaServiceError('SAVE_FAILED', 'Falha ao registrar cancelamento.', error);
   }
 };
+
+/**
+ * Exclui todas as disponibilidades de uma profissional (libera para reenvio).
+ * Remove registros de agenda_disponibilidade e também do agenda_historico.
+ */
+export const deleteProfissionalDisponibilidade = async (
+  unitId: string,
+  profissionalId: string,
+  settingsId?: string | null
+): Promise<void> => {
+  assertValidUuid(unitId, 'Unidade');
+  assertValidUuid(profissionalId, 'Profissional');
+
+  // 1. Delete da agenda_disponibilidade
+  let query = supabase
+    .from('agenda_disponibilidade')
+    .delete()
+    .eq('unit_id', unitId)
+    .eq('profissional_id', profissionalId);
+
+  if (settingsId) {
+    query = query.eq('settings_id', settingsId);
+  }
+
+  const { error: delError } = await query;
+
+  if (delError) {
+    logger.error('Erro ao excluir disponibilidade da profissional', { unitId, profissionalId, error: delError });
+    throw new AgendaServiceError('SUPABASE_ERROR', 'Não foi possível excluir a disponibilidade.', delError);
+  }
+
+  // 2. Delete também do agenda_historico (mesmos critérios: unidade + profissional)
+  const { error: histDelError } = await supabase
+    .from('agenda_historico')
+    .delete()
+    .eq('unit_id', unitId)
+    .eq('profissional_id', profissionalId);
+
+  if (histDelError) {
+    logger.error('Erro ao excluir histórico da profissional', { unitId, profissionalId, error: histDelError });
+    throw new AgendaServiceError('SUPABASE_ERROR', 'Não foi possível excluir o histórico.', histDelError);
+  }
+};
